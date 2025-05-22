@@ -1,0 +1,18 @@
+2025-05-21 10:02:42.368 [info] 
+
+
+
+
+2025-05-21 10:02:42.387 [info] Extension host agent started.
+2025-05-21 10:02:42.466 [info] Started initializing default profile extensions in extensions installation folder. file:///home/ubuntu/.local/share/code-server/extensions
+2025-05-21 10:02:42.482 [info] ComputeTargetPlatform: linux-x64
+2025-05-21 10:02:42.490 [info] Completed initializing default profile extensions in extensions installation folder. file:///home/ubuntu/.local/share/code-server/extensions
+2025-05-21 10:02:51.331 [info] [10.217.246.1][a2ad1ed4][ManagementConnection] New connection established.
+2025-05-21 10:02:58.307 [info] [10.217.246.1][d73ec1b2][ExtensionHostConnection] New connection established.
+2025-05-21 10:02:59.132 [info] [10.217.246.1][d73ec1b2][ExtensionHostConnection] <9056> Launched Extension Host Process.
+2025-05-22 06:49:03.656 [info] [10.6.118.1][e3593385][ManagementConnection] New connection established.
+2025-05-22 06:49:06.809 [info] [10.6.118.1][70091028][ExtensionHostConnection] New connection established.
+2025-05-22 06:49:06.823 [info] [10.6.118.1][70091028][ExtensionHostConnection] <22696> Launched Extension Host Process.
+2025-05-22 06:50:41.630 [error] Error: read ETIMEDOUT
+    at TCP.onStreamRead (node:internal/stream_base_commons:218:20)
+2025-05-22 06:50:41.634 [info] [10.217.246.1][a2ad1ed4][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...

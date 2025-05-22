@@ -1,0 +1,24 @@
+[2025-05-21T08:26:59.007Z] info  code-server 4.100.2 9dd999ba78032163d606fadd531de5e1fcae5443
+[2025-05-21T08:26:59.025Z] info  Using user-data-dir /home/ubuntu/.local/share/code-server
+[2025-05-21T08:26:59.041Z] info  Using config file /home/ubuntu/.config/code-server/config.yaml
+[2025-05-21T08:26:59.041Z] info  HTTP server listening on http://0.0.0.0:8329/
+[2025-05-21T08:26:59.041Z] info    - Authentication is enabled
+[2025-05-21T08:26:59.041Z] info      - Using password from /home/ubuntu/.config/code-server/config.yaml
+[2025-05-21T08:26:59.041Z] info    - Not serving HTTPS
+[2025-05-21T08:26:59.041Z] info  Session server listening on /home/ubuntu/.local/share/code-server/code-server-ipc.sock
+[10:02:41] 
+
+
+
+
+[10:02:42] Extension host agent started.
+[10:02:42] Started initializing default profile extensions in extensions installation folder. file:///home/ubuntu/.local/share/code-server/extensions
+[10:02:42] ComputeTargetPlatform: linux-x64
+[10:02:42] Completed initializing default profile extensions in extensions installation folder. file:///home/ubuntu/.local/share/code-server/extensions
+[10:02:51] [10.217.246.1][a2ad1ed4][ManagementConnection] New connection established.
+[10:02:58] [10.217.246.1][d73ec1b2][ExtensionHostConnection] New connection established.
+[10:02:59] [10.217.246.1][d73ec1b2][ExtensionHostConnection] <9056> Launched Extension Host Process.
+[06:49:03] [10.6.118.1][e3593385][ManagementConnection] New connection established.
+[06:49:06] [10.6.118.1][70091028][ExtensionHostConnection] New connection established.
+[06:49:06] [10.6.118.1][70091028][ExtensionHostConnection] <22696> Launched Extension Host Process.
+[06:50:41] [10.217.246.1][a2ad1ed4][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
