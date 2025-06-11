@@ -1,0 +1,13 @@
+# Browser cache and data files
+.browser_data_dir/
+**/DawnCache/
+**/GPUCache/
+**/GrShaderCache/
+**/ShaderCache/
+**/WebStorage/
+**/TransportSecurity
+
+# System files
+.bash_history
+*.log
+*.tmp
