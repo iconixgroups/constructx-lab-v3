@@ -1,428 +1,470 @@
-const Project = require('../models/project.model');
-const Company = require('../models/company.model');
-const User = require('../models/user.model');
-const { createError } = require('../utils/error');
+const Project = require("../models/project.model");
+const ProjectPhase = require("../models/projectPhase.model");
+const ProjectMember = require("../models/projectMember.model");
+const ProjectMetric = require("../models/projectMetric.model");
+const asyncHandler = require("../utils/asyncHandler");
+const ApiError = require("../utils/ApiError");
+const ApiResponse = require("../utils/ApiResponse");
 
-// Create a new project
-exports.createProject = async (req, res, next) => {
-  try {
-    const { name, description, startDate, endDate, budget, location, client, tags } = req.body;
-    
-    // Check if company has reached project limit
-    const company = await Company.findById(req.user.company).populate('subscription');
-    if (!company) {
-      return next(createError(404, 'Company not found'));
-    }
-    
-    // Verify subscription and project limits
-    if (!company.subscription) {
-      return next(createError(403, 'Active subscription required to create projects'));
-    }
-    
-    // Count existing active projects
-    const projectCount = await Project.countDocuments({ 
-      company: company._id,
-      isActive: true
-    });
-    
-    // Check if project limit is reached based on subscription plan
-    if (company.subscription.limits.projects !== 'Unlimited' && 
-        projectCount >= company.subscription.limits.projects) {
-      return next(createError(403, `Project limit reached (${projectCount}/${company.subscription.limits.projects}). Please upgrade your subscription plan to create more projects.`));
-    }
-    
-    // Create new project
-    const project = new Project({
-      name,
-      description,
-      company: company._id,
-      startDate,
-      endDate,
-      budget,
-      location,
-      client,
-      tags,
-      createdBy: req.user._id,
-      team: [{ user: req.user._id, role: 'project_manager' }]
-    });
-    
-    // Save project
-    await project.save();
-    
-    res.status(201).json({
-      success: true,
-      project
-    });
-  } catch (error) {
-    next(createError(500, 'Error creating project: ' + error.message));
-  }
-};
+// --- Project Controllers ---
 
-// Get all projects for company
-exports.getProjects = async (req, res, next) => {
-  try {
-    const { status, search, sort, limit = 10, page = 1 } = req.query;
-    
-    // Build query
-    const query = { company: req.user.company };
-    
-    // Filter by status if provided
-    if (status) {
-      query.status = status;
-    }
-    
-    // Search by name or description
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    // Build sort options
-    let sortOptions = { createdAt: -1 }; // Default sort by creation date (newest first)
-    if (sort) {
-      const [field, order] = sort.split(':');
-      sortOptions = { [field]: order === 'desc' ? -1 : 1 };
-    }
-    
-    // Calculate pagination
-    const skip = (page - 1) * limit;
-    
-    // Execute query with pagination
-    const projects = await Project.find(query)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('createdBy', 'firstName lastName email')
-      .populate('team.user', 'firstName lastName email');
-    
-    // Get total count for pagination
-    const totalProjects = await Project.countDocuments(query);
-    
-    res.status(200).json({
-      success: true,
-      count: projects.length,
-      totalPages: Math.ceil(totalProjects / limit),
-      currentPage: parseInt(page),
-      projects
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching projects: ' + error.message));
-  }
-};
+// @desc    Get all projects with filtering and pagination
+// @route   GET /api/projects
+// @access  Private
+const getProjects = asyncHandler(async (req, res) => {
+    // Basic implementation - add filtering (status, type, manager), sorting, pagination
+    const projects = await Project.find({ companyId: req.user.companyId })
+        .populate("projectManager", "firstName lastName email")
+        .populate("clientId", "name") // Populate client company name
+        .sort({ createdAt: -1 });
 
-// Get project by ID
-exports.getProjectById = async (req, res, next) => {
-  try {
-    const { projectId } = req.params;
-    
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    })
-      .populate('createdBy', 'firstName lastName email')
-      .populate('team.user', 'firstName lastName email');
-    
+    res.status(200).json(new ApiResponse(200, projects, "Projects retrieved successfully"));
+});
+
+// @desc    Get specific project details
+// @route   GET /api/projects/:id
+// @access  Private
+const getProjectById = asyncHandler(async (req, res) => {
+    const project = await Project.findOne({ _id: req.params.id, companyId: req.user.companyId })
+        .populate("projectManager", "firstName lastName email")
+        .populate("clientId", "name")
+        .populate("contractId"); // Populate contract if needed
+
     if (!project) {
-      return next(createError(404, 'Project not found'));
+        throw new ApiError(404, "Project not found");
     }
-    
-    res.status(200).json({
-      success: true,
-      project
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching project: ' + error.message));
-  }
-};
+    res.status(200).json(new ApiResponse(200, project, "Project retrieved successfully"));
+});
 
-// Update project
-exports.updateProject = async (req, res, next) => {
-  try {
-    const { projectId } = req.params;
-    const { name, description, status, startDate, endDate, budget, location, client, tags } = req.body;
-    
-    // Find project
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    });
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
+// @desc    Create new project
+// @route   POST /api/projects
+// @access  Private
+const createProject = asyncHandler(async (req, res) => {
+    const {
+        name, code, description, clientId, contractId, status,
+        startDate, targetCompletionDate, budget, location, address,
+        gpsCoordinates, projectType, projectManager, tags, customFields
+    } = req.body;
+
+    // Basic validation
+    if (!name || !code || !clientId || !startDate || !targetCompletionDate || !budget || !projectManager) {
+        throw new ApiError(400, "Missing required project fields");
     }
-    
-    // Check if user is authorized to update project
-    const isProjectManager = project.team.some(member => 
-      member.user.toString() === req.user._id.toString() && 
-      member.role === 'project_manager'
-    );
-    
-    if (req.user.role !== 'owner' && req.user.role !== 'admin' && !isProjectManager) {
-      return next(createError(403, 'Not authorized to update this project'));
+
+    // Check if project code is unique for the company
+    const existingProject = await Project.findOne({ code: code, companyId: req.user.companyId });
+    if (existingProject) {
+        throw new ApiError(400, `Project code '${code}' already exists for this company.`);
     }
-    
-    // Update project
-    const updatedProject = await Project.findByIdAndUpdate(
-      projectId,
-      {
+
+    const project = await Project.create({
+        companyId: req.user.companyId,
         name,
+        code,
         description,
-        status,
+        clientId,
+        contractId,
+        status: status || "Planning",
         startDate,
-        endDate,
+        targetCompletionDate,
         budget,
         location,
-        client,
-        tags
-      },
-      { new: true, runValidators: true }
-    )
-      .populate('createdBy', 'firstName lastName email')
-      .populate('team.user', 'firstName lastName email');
-    
-    res.status(200).json({
-      success: true,
-      project: updatedProject
+        address,
+        gpsCoordinates,
+        projectType,
+        projectManager,
+        createdBy: req.user.id,
+        tags,
+        customFields,
     });
-  } catch (error) {
-    next(createError(500, 'Error updating project: ' + error.message));
-  }
-};
 
-// Delete project
-exports.deleteProject = async (req, res, next) => {
-  try {
-    const { projectId } = req.params;
-    
-    // Find project
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
+    // Add the creator/project manager as a project member automatically
+    await ProjectMember.create({
+        projectId: project._id,
+        userId: projectManager, // Assuming projectManager is the user ID
+        role: "Project Manager", // Default role
+        createdBy: req.user.id,
     });
-    
+    // If creator is different from PM and should also be added:
+    if (req.user.id.toString() !== projectManager.toString()) {
+         await ProjectMember.create({
+            projectId: project._id,
+            userId: req.user.id,
+            role: "Creator", // Or another default role
+            createdBy: req.user.id,
+        });
+    }
+
+    res.status(201).json(new ApiResponse(201, project, "Project created successfully"));
+});
+
+// @desc    Update project details
+// @route   PUT /api/projects/:id
+// @access  Private
+const updateProject = asyncHandler(async (req, res) => {
+    const projectId = req.params.id;
+    const updates = req.body;
+
+    const project = await Project.findOne({ _id: projectId, companyId: req.user.companyId });
+
     if (!project) {
-      return next(createError(404, 'Project not found'));
+        throw new ApiError(404, "Project not found");
     }
-    
-    // Check if user is authorized to delete project
-    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
-      return next(createError(403, 'Not authorized to delete this project'));
+
+    // Prevent updating certain fields
+    delete updates.companyId;
+    delete updates.createdBy;
+    delete updates.createdAt;
+    delete updates.updatedAt;
+    delete updates.code; // Usually project code shouldn't be changed
+    delete updates.isDeleted;
+    delete updates.deletedAt;
+
+    // Check if project manager is being changed and update ProjectMember if necessary
+    if (updates.projectManager && updates.projectManager !== project.projectManager.toString()) {
+        // Remove old PM role (or update)
+        await ProjectMember.findOneAndUpdate(
+            { projectId: projectId, userId: project.projectManager, role: "Project Manager" },
+            { removedAt: new Date() } // Or delete, depending on requirements
+        );
+        // Add new PM role
+        await ProjectMember.findOneAndUpdate(
+            { projectId: projectId, userId: updates.projectManager },
+            { role: "Project Manager", removedAt: null, $setOnInsert: { createdBy: req.user.id, joinedAt: new Date() } },
+            { upsert: true, new: true }
+        );
     }
-    
-    // Soft delete project
-    project.isActive = false;
+
+    Object.assign(project, updates);
     await project.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Project deleted successfully'
-    });
-  } catch (error) {
-    next(createError(500, 'Error deleting project: ' + error.message));
-  }
-};
 
-// Get project team
-exports.getProjectTeam = async (req, res, next) => {
-  try {
-    const { projectId } = req.params;
-    
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    }).populate('team.user', 'firstName lastName email role');
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
-    }
-    
-    res.status(200).json({
-      success: true,
-      team: project.team
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching project team: ' + error.message));
-  }
-};
+    res.status(200).json(new ApiResponse(200, project, "Project updated successfully"));
+});
 
-// Add team member to project
-exports.addTeamMember = async (req, res, next) => {
-  try {
-    const { projectId } = req.params;
-    const { userId, role } = req.body;
-    
-    // Find project
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    });
-    
+// @desc    Delete project (soft delete)
+// @route   DELETE /api/projects/:id
+// @access  Private
+const deleteProject = asyncHandler(async (req, res) => {
+    const projectId = req.params.id;
+
+    const project = await Project.findOne({ _id: projectId, companyId: req.user.companyId });
+
     if (!project) {
-      return next(createError(404, 'Project not found'));
+        throw new ApiError(404, "Project not found");
     }
-    
-    // Check if user is authorized to add team members
-    const isProjectManager = project.team.some(member => 
-      member.user.toString() === req.user._id.toString() && 
-      member.role === 'project_manager'
-    );
-    
-    if (req.user.role !== 'owner' && req.user.role !== 'admin' && !isProjectManager) {
-      return next(createError(403, 'Not authorized to add team members to this project'));
-    }
-    
-    // Check if user exists and belongs to the same company
-    const user = await User.findOne({
-      _id: userId,
-      company: req.user.company
-    });
-    
-    if (!user) {
-      return next(createError(404, 'User not found or not part of your company'));
-    }
-    
-    // Check if user is already in the team
-    if (project.team.some(member => member.user.toString() === userId)) {
-      return next(createError(400, 'User is already a team member'));
-    }
-    
-    // Add user to team
-    project.team.push({
-      user: userId,
-      role: role || 'member'
-    });
-    
+
+    project.isDeleted = true;
+    project.deletedAt = new Date();
     await project.save();
-    
-    // Populate team data
-    await project.populate('team.user', 'firstName lastName email');
-    
-    res.status(200).json({
-      success: true,
-      message: 'Team member added successfully',
-      team: project.team
+
+    // Optionally: Soft delete related items like phases, members, metrics, tasks, documents etc.
+    // This depends on cascading delete requirements.
+
+    res.status(200).json(new ApiResponse(200, {}, "Project deleted successfully"));
+});
+
+// --- Project Phase Controllers ---
+
+// @desc    List all phases for a project
+// @route   GET /api/projects/:projectId/phases
+// @access  Private
+const getProjectPhases = asyncHandler(async (req, res) => {
+    const projectId = req.params.projectId;
+    // Verify project access
+    const project = await Project.findOne({ _id: projectId, companyId: req.user.companyId });
+    if (!project) throw new ApiError(404, "Project not found");
+
+    const phases = await ProjectPhase.find({ projectId: projectId }).sort({ order: 1 });
+    res.status(200).json(new ApiResponse(200, phases, "Project phases retrieved successfully"));
+});
+
+// @desc    Add phase to project
+// @route   POST /api/projects/:projectId/phases
+// @access  Private
+const addProjectPhase = asyncHandler(async (req, res) => {
+    const projectId = req.params.projectId;
+    const { name, description, order, startDate, endDate, status, budget } = req.body;
+
+    // Verify project access
+    const project = await Project.findOne({ _id: projectId, companyId: req.user.companyId });
+    if (!project) throw new ApiError(404, "Project not found");
+
+    if (!name || !startDate || !endDate) {
+        throw new ApiError(400, "Phase name, start date, and end date are required");
+    }
+
+    // Determine order if not provided
+    let phaseOrder = order;
+    if (phaseOrder === undefined) {
+        const lastPhase = await ProjectPhase.findOne({ projectId }).sort({ order: -1 });
+        phaseOrder = lastPhase ? lastPhase.order + 1 : 0;
+    }
+
+    const phase = await ProjectPhase.create({
+        projectId,
+        name,
+        description,
+        order: phaseOrder,
+        startDate,
+        endDate,
+        status: status || "Not Started",
+        budget,
     });
-  } catch (error) {
-    next(createError(500, 'Error adding team member: ' + error.message));
-  }
+
+    res.status(201).json(new ApiResponse(201, phase, "Project phase added successfully"));
+});
+
+// @desc    Update phase details
+// @route   PUT /api/projects/phases/:id
+// @access  Private
+const updateProjectPhase = asyncHandler(async (req, res) => {
+    const phaseId = req.params.id;
+    const updates = req.body;
+
+    const phase = await ProjectPhase.findById(phaseId).populate("projectId");
+    if (!phase || phase.projectId.companyId.toString() !== req.user.companyId.toString()) {
+        throw new ApiError(404, "Project phase not found or access denied");
+    }
+
+    delete updates.projectId; // Cannot change project ID
+    delete updates.createdAt;
+    delete updates.updatedAt;
+
+    Object.assign(phase, updates);
+    await phase.save();
+
+    res.status(200).json(new ApiResponse(200, phase, "Project phase updated successfully"));
+});
+
+// @desc    Remove phase from project
+// @route   DELETE /api/projects/phases/:id
+// @access  Private
+const removeProjectPhase = asyncHandler(async (req, res) => {
+    const phaseId = req.params.id;
+
+    const phase = await ProjectPhase.findById(phaseId).populate("projectId");
+    if (!phase || phase.projectId.companyId.toString() !== req.user.companyId.toString()) {
+        throw new ApiError(404, "Project phase not found or access denied");
+    }
+
+    // Consider implications: delete related tasks? For now, just delete the phase.
+    await ProjectPhase.deleteOne({ _id: phaseId });
+
+    res.status(200).json(new ApiResponse(200, {}, "Project phase removed successfully"));
+});
+
+// --- Project Member Controllers ---
+
+// @desc    List all members for a project
+// @route   GET /api/projects/:projectId/members
+// @access  Private
+const getProjectMembers = asyncHandler(async (req, res) => {
+    const projectId = req.params.projectId;
+    // Verify project access
+    const project = await Project.findOne({ _id: projectId, companyId: req.user.companyId });
+    if (!project) throw new ApiError(404, "Project not found");
+
+    const members = await ProjectMember.find({ projectId: projectId, removedAt: null })
+        .populate("userId", "firstName lastName email avatar"); // Populate user details
+
+    res.status(200).json(new ApiResponse(200, members, "Project members retrieved successfully"));
+});
+
+// @desc    Add member to project
+// @route   POST /api/projects/:projectId/members
+// @access  Private
+const addProjectMember = asyncHandler(async (req, res) => {
+    const projectId = req.params.projectId;
+    const { userId, role, permissions } = req.body;
+
+    // Verify project access
+    const project = await Project.findOne({ _id: projectId, companyId: req.user.companyId });
+    if (!project) throw new ApiError(404, "Project not found");
+
+    if (!userId || !role) {
+        throw new ApiError(400, "User ID and role are required");
+    }
+
+    // Check if member already exists (and potentially reactivate if removed)
+    let member = await ProjectMember.findOne({ projectId, userId });
+
+    if (member) {
+        // If member exists but was removed, reactivate and update role/permissions
+        if (member.removedAt) {
+            member.role = role;
+            member.permissions = permissions || {};
+            member.removedAt = null;
+            member.joinedAt = new Date(); // Reset joined date or keep original?
+            await member.save();
+            return res.status(200).json(new ApiResponse(200, member, "Project member reactivated successfully"));
+        } else {
+            // Member already active
+            throw new ApiError(400, "User is already a member of this project");
+        }
+    } else {
+        // Create new member
+        member = await ProjectMember.create({
+            projectId,
+            userId,
+            role,
+            permissions: permissions || {},
+            createdBy: req.user.id,
+        });
+    }
+
+    res.status(201).json(new ApiResponse(201, member, "Project member added successfully"));
+});
+
+// @desc    Update member details/role
+// @route   PUT /api/projects/members/:id
+// @access  Private
+const updateProjectMember = asyncHandler(async (req, res) => {
+    const memberId = req.params.id;
+    const { role, permissions } = req.body;
+
+    const member = await ProjectMember.findById(memberId).populate("projectId");
+    if (!member || member.projectId.companyId.toString() !== req.user.companyId.toString()) {
+        throw new ApiError(404, "Project member not found or access denied");
+    }
+
+    if (member.removedAt) {
+        throw new ApiError(400, "Cannot update a removed member. Reactivate first.");
+    }
+
+    if (role) member.role = role;
+    if (permissions) member.permissions = permissions;
+
+    await member.save();
+
+    res.status(200).json(new ApiResponse(200, member, "Project member updated successfully"));
+});
+
+// @desc    Remove member from project (soft delete)
+// @route   DELETE /api/projects/members/:id
+// @access  Private
+const removeProjectMember = asyncHandler(async (req, res) => {
+    const memberId = req.params.id;
+
+    const member = await ProjectMember.findById(memberId).populate("projectId");
+    if (!member || member.projectId.companyId.toString() !== req.user.companyId.toString()) {
+        throw new ApiError(404, "Project member not found or access denied");
+    }
+
+    // Prevent removing the last Project Manager? (Optional logic)
+    // if (member.role === "Project Manager") {
+    //     const otherPms = await ProjectMember.countDocuments({ projectId: member.projectId, role: "Project Manager", removedAt: null, _id: { $ne: memberId } });
+    //     if (otherPms === 0) {
+    //         throw new ApiError(400, "Cannot remove the last Project Manager");
+    //     }
+    // }
+
+    member.removedAt = new Date();
+    await member.save();
+
+    res.status(200).json(new ApiResponse(200, {}, "Project member removed successfully"));
+});
+
+// --- Project Metric Controllers ---
+
+// @desc    List all metrics for a project
+// @route   GET /api/projects/:projectId/metrics
+// @access  Private
+const getProjectMetrics = asyncHandler(async (req, res) => {
+    const projectId = req.params.projectId;
+    // Verify project access
+    const project = await Project.findOne({ _id: projectId, companyId: req.user.companyId });
+    if (!project) throw new ApiError(404, "Project not found");
+
+    // Add filtering by category, date range etc.
+    const metrics = await ProjectMetric.find({ projectId: projectId }).sort({ date: -1, category: 1 });
+    res.status(200).json(new ApiResponse(200, metrics, "Project metrics retrieved successfully"));
+});
+
+// @desc    Add metric to project
+// @route   POST /api/projects/:projectId/metrics
+// @access  Private
+const addProjectMetric = asyncHandler(async (req, res) => {
+    const projectId = req.params.projectId;
+    const { name, category, value, target, unit, date } = req.body;
+
+    // Verify project access
+    const project = await Project.findOne({ _id: projectId, companyId: req.user.companyId });
+    if (!project) throw new ApiError(404, "Project not found");
+
+    if (!name || !category || value === undefined) {
+        throw new ApiError(400, "Metric name, category, and value are required");
+    }
+
+    const metric = await ProjectMetric.create({
+        projectId,
+        name,
+        category,
+        value,
+        target,
+        unit,
+        date: date || new Date(),
+    });
+
+    res.status(201).json(new ApiResponse(201, metric, "Project metric added successfully"));
+});
+
+// @desc    Update metric details
+// @route   PUT /api/projects/metrics/:id
+// @access  Private
+const updateProjectMetric = asyncHandler(async (req, res) => {
+    const metricId = req.params.id;
+    const updates = req.body;
+
+    const metric = await ProjectMetric.findById(metricId).populate("projectId");
+    if (!metric || metric.projectId.companyId.toString() !== req.user.companyId.toString()) {
+        throw new ApiError(404, "Project metric not found or access denied");
+    }
+
+    delete updates.projectId; // Cannot change project ID
+    delete updates.createdAt;
+    delete updates.updatedAt;
+
+    Object.assign(metric, updates);
+    await metric.save();
+
+    res.status(200).json(new ApiResponse(200, metric, "Project metric updated successfully"));
+});
+
+// @desc    Remove metric from project
+// @route   DELETE /api/projects/metrics/:id
+// @access  Private
+const removeProjectMetric = asyncHandler(async (req, res) => {
+    const metricId = req.params.id;
+
+    const metric = await ProjectMetric.findById(metricId).populate("projectId");
+    if (!metric || metric.projectId.companyId.toString() !== req.user.companyId.toString()) {
+        throw new ApiError(404, "Project metric not found or access denied");
+    }
+
+    await ProjectMetric.deleteOne({ _id: metricId });
+
+    res.status(200).json(new ApiResponse(200, {}, "Project metric removed successfully"));
+});
+
+
+module.exports = {
+    getProjects,
+    getProjectById,
+    createProject,
+    updateProject,
+    deleteProject,
+    getProjectPhases,
+    addProjectPhase,
+    updateProjectPhase,
+    removeProjectPhase,
+    getProjectMembers,
+    addProjectMember,
+    updateProjectMember,
+    removeProjectMember,
+    getProjectMetrics,
+    addProjectMetric,
+    updateProjectMetric,
+    removeProjectMetric,
+    // Add controllers for reordering phases, getting roles/statuses/types etc. if needed
 };
 
-// Remove team member from project
-exports.removeTeamMember = async (req, res, next) => {
-  try {
-    const { projectId, userId } = req.params;
-    
-    // Find project
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    });
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
-    }
-    
-    // Check if user is authorized to remove team members
-    const isProjectManager = project.team.some(member => 
-      member.user.toString() === req.user._id.toString() && 
-      member.role === 'project_manager'
-    );
-    
-    if (req.user.role !== 'owner' && req.user.role !== 'admin' && !isProjectManager) {
-      return next(createError(403, 'Not authorized to remove team members from this project'));
-    }
-    
-    // Check if user is in the team
-    const memberIndex = project.team.findIndex(member => member.user.toString() === userId);
-    
-    if (memberIndex === -1) {
-      return next(createError(404, 'User is not a team member'));
-    }
-    
-    // Prevent removing the last project manager
-    if (project.team[memberIndex].role === 'project_manager') {
-      const projectManagerCount = project.team.filter(member => member.role === 'project_manager').length;
-      
-      if (projectManagerCount === 1) {
-        return next(createError(400, 'Cannot remove the only project manager. Assign another project manager first.'));
-      }
-    }
-    
-    // Remove user from team
-    project.team.splice(memberIndex, 1);
-    await project.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Team member removed successfully',
-      team: project.team
-    });
-  } catch (error) {
-    next(createError(500, 'Error removing team member: ' + error.message));
-  }
-};
-
-// Update team member role
-exports.updateTeamMemberRole = async (req, res, next) => {
-  try {
-    const { projectId, userId } = req.params;
-    const { role } = req.body;
-    
-    if (!['project_manager', 'team_lead', 'member'].includes(role)) {
-      return next(createError(400, 'Invalid role'));
-    }
-    
-    // Find project
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    });
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
-    }
-    
-    // Check if user is authorized to update team member roles
-    const isProjectManager = project.team.some(member => 
-      member.user.toString() === req.user._id.toString() && 
-      member.role === 'project_manager'
-    );
-    
-    if (req.user.role !== 'owner' && req.user.role !== 'admin' && !isProjectManager) {
-      return next(createError(403, 'Not authorized to update team member roles in this project'));
-    }
-    
-    // Check if user is in the team
-    const memberIndex = project.team.findIndex(member => member.user.toString() === userId);
-    
-    if (memberIndex === -1) {
-      return next(createError(404, 'User is not a team member'));
-    }
-    
-    // If changing from project manager, ensure there's at least one other project manager
-    if (project.team[memberIndex].role === 'project_manager' && role !== 'project_manager') {
-      const projectManagerCount = project.team.filter(member => member.role === 'project_manager').length;
-      
-      if (projectManagerCount === 1) {
-        return next(createError(400, 'Cannot remove the only project manager. Assign another project manager first.'));
-      }
-    }
-    
-    // Update role
-    project.team[memberIndex].role = role;
-    await project.save();
-    
-    // Populate team data
-    await project.populate('team.user', 'firstName lastName email');
-    
-    res.status(200).json({
-      success: true,
-      message: 'Team member role updated successfully',
-      team: project.team
-    });
-  } catch (error) {
-    next(createError(500, 'Error updating team member role: ' + error.message));
-  }
-};

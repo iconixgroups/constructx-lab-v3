@@ -1,630 +1,316 @@
-const Dashboard = require('../models/dashboard.model');
-const Project = require('../models/project.model');
-const { createError } = require('../utils/error');
+const DashboardConfig = require("../models/dashboardConfig.model");
+const Widget = require("../models/widget.model");
+const asyncHandler = require("../utils/asyncHandler");
+const ApiError = require("../utils/ApiError");
+const ApiResponse = require("../utils/ApiResponse");
 
-// Create a new dashboard
-exports.createDashboard = async (req, res, next) => {
-  try {
-    const { name, description, projectId, layout, isDefault } = req.body;
-    
-    // Check if project exists and belongs to user's company
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    });
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
+// --- Dashboard Configuration Controllers ---
+
+// @desc    Get all dashboards for the current user
+// @route   GET /api/dashboards
+// @access  Private
+const getDashboards = asyncHandler(async (req, res) => {
+    // Assuming userId is available in req.user after authentication
+    const dashboards = await DashboardConfig.find({ userId: req.user.id });
+    res.status(200).json(new ApiResponse(200, dashboards, "Dashboards retrieved successfully"));
+});
+
+// @desc    Get a specific dashboard configuration
+// @route   GET /api/dashboards/:id
+// @access  Private
+const getDashboardById = asyncHandler(async (req, res) => {
+    const dashboard = await DashboardConfig.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!dashboard) {
+        throw new ApiError(404, "Dashboard not found");
     }
-    
-    // If setting as default, unset any existing default dashboard
+    res.status(200).json(new ApiResponse(200, dashboard, "Dashboard retrieved successfully"));
+});
+
+// @desc    Create a new dashboard
+// @route   POST /api/dashboards
+// @access  Private
+const createDashboard = asyncHandler(async (req, res) => {
+    const { name, layout, projectId, isDefault } = req.body;
+
+    if (!name || !layout) {
+        throw new ApiError(400, "Name and layout are required");
+    }
+
+    // Handle default dashboard logic
     if (isDefault) {
-      await Dashboard.updateMany(
-        { project: projectId, isDefault: true },
-        { isDefault: false }
-      );
+        await DashboardConfig.updateMany(
+            { userId: req.user.id, projectId: projectId || null }, // Match scope
+            { $set: { isDefault: false } }
+        );
     }
-    
-    // Create new dashboard
-    const dashboard = new Dashboard({
-      name,
-      description,
-      project: projectId,
-      company: req.user.company,
-      createdBy: req.user._id,
-      isDefault,
-      layout: layout || {
-        columns: 3,
-        widgets: [
-          {
-            type: 'project_summary',
-            title: 'Project Summary',
-            size: { width: 2, height: 1 },
-            position: { x: 0, y: 0 },
-            config: {}
-          },
-          {
-            type: 'task_status',
-            title: 'Task Status',
-            size: { width: 1, height: 1 },
-            position: { x: 2, y: 0 },
-            config: {}
-          },
-          {
-            type: 'upcoming_milestones',
-            title: 'Upcoming Milestones',
-            size: { width: 1, height: 1 },
-            position: { x: 0, y: 1 },
-            config: {}
-          },
-          {
-            type: 'recent_activity',
-            title: 'Recent Activity',
-            size: { width: 2, height: 1 },
-            position: { x: 1, y: 1 },
-            config: {}
-          }
-        ]
-      }
+
+    const dashboard = await DashboardConfig.create({
+        userId: req.user.id,
+        companyId: req.user.companyId, // Assuming companyId is also in req.user
+        projectId: projectId || null,
+        name,
+        layout,
+        isDefault: isDefault || false,
     });
-    
+
+    res.status(201).json(new ApiResponse(201, dashboard, "Dashboard created successfully"));
+});
+
+// @desc    Update a dashboard configuration
+// @route   PUT /api/dashboards/:id
+// @access  Private
+const updateDashboard = asyncHandler(async (req, res) => {
+    const { name, layout, isDefault } = req.body;
+    const dashboardId = req.params.id;
+
+    const dashboard = await DashboardConfig.findOne({ _id: dashboardId, userId: req.user.id });
+
+    if (!dashboard) {
+        throw new ApiError(404, "Dashboard not found");
+    }
+
+    // Handle default dashboard logic if isDefault is being changed
+    if (isDefault !== undefined && isDefault !== dashboard.isDefault) {
+        if (isDefault) {
+            // Set this one as default, unset others in the same scope
+            await DashboardConfig.updateMany(
+                { userId: req.user.id, projectId: dashboard.projectId, _id: { $ne: dashboardId } },
+                { $set: { isDefault: false } }
+            );
+        } else {
+            // If unsetting the default, ensure another default exists or handle accordingly
+            // For simplicity, we allow unsetting without forcing another default here.
+            // Consider adding logic if a default is always required.
+        }
+        dashboard.isDefault = isDefault;
+    }
+
+    if (name) dashboard.name = name;
+    if (layout) dashboard.layout = layout;
+
     await dashboard.save();
-    
-    res.status(201).json({
-      success: true,
-      dashboard
-    });
-  } catch (error) {
-    next(createError(500, 'Error creating dashboard: ' + error.message));
-  }
-};
 
-// Get all dashboards for a project
-exports.getProjectDashboards = async (req, res, next) => {
-  try {
-    const { projectId } = req.params;
-    
-    // Check if project exists and belongs to user's company
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    });
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
-    }
-    
-    // Get dashboards
-    const dashboards = await Dashboard.find({
-      project: projectId,
-      isActive: true,
-      $or: [
-        { createdBy: req.user._id },
-        { 'sharedWith.user': req.user._id },
-        { isDefault: true }
-      ]
-    }).sort({ isDefault: -1, createdAt: -1 });
-    
-    res.status(200).json({
-      success: true,
-      count: dashboards.length,
-      dashboards
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching dashboards: ' + error.message));
-  }
-};
+    res.status(200).json(new ApiResponse(200, dashboard, "Dashboard updated successfully"));
+});
 
-// Get dashboard by ID
-exports.getDashboardById = async (req, res, next) => {
-  try {
-    const { dashboardId } = req.params;
-    
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company,
-      isActive: true,
-      $or: [
-        { createdBy: req.user._id },
-        { 'sharedWith.user': req.user._id },
-        { isDefault: true }
-      ]
-    });
-    
+// @desc    Delete a dashboard
+// @route   DELETE /api/dashboards/:id
+// @access  Private
+const deleteDashboard = asyncHandler(async (req, res) => {
+    const dashboardId = req.params.id;
+    const dashboard = await DashboardConfig.findOne({ _id: dashboardId, userId: req.user.id });
+
     if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
+        throw new ApiError(404, "Dashboard not found");
     }
-    
-    res.status(200).json({
-      success: true,
-      dashboard
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching dashboard: ' + error.message));
-  }
-};
 
-// Update dashboard
-exports.updateDashboard = async (req, res, next) => {
-  try {
-    const { dashboardId } = req.params;
-    const { name, description, layout, isDefault } = req.body;
-    
-    // Find dashboard
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
-    }
-    
-    // Check if user is authorized to update dashboard
-    const canEdit = dashboard.createdBy.toString() === req.user._id.toString() ||
-                   dashboard.sharedWith.some(share => 
-                     share.user.toString() === req.user._id.toString() && 
-                     share.permission === 'edit'
-                   );
-    
-    if (!canEdit) {
-      return next(createError(403, 'Not authorized to update this dashboard'));
-    }
-    
-    // If setting as default, unset any existing default dashboard
-    if (isDefault && !dashboard.isDefault) {
-      await Dashboard.updateMany(
-        { project: dashboard.project, isDefault: true },
-        { isDefault: false }
-      );
-    }
-    
-    // Update dashboard
-    dashboard.name = name || dashboard.name;
-    dashboard.description = description !== undefined ? description : dashboard.description;
-    dashboard.layout = layout || dashboard.layout;
-    dashboard.isDefault = isDefault !== undefined ? isDefault : dashboard.isDefault;
-    
-    await dashboard.save();
-    
-    res.status(200).json({
-      success: true,
-      dashboard
-    });
-  } catch (error) {
-    next(createError(500, 'Error updating dashboard: ' + error.message));
-  }
-};
+    // Prevent deleting the last default dashboard? (Optional logic)
+    // if (dashboard.isDefault) {
+    //     const otherDefaults = await DashboardConfig.countDocuments({ userId: req.user.id, projectId: dashboard.projectId, isDefault: true, _id: { $ne: dashboardId } });
+    //     if (otherDefaults === 0) {
+    //         throw new ApiError(400, "Cannot delete the last default dashboard");
+    //     }
+    // }
 
-// Delete dashboard
-exports.deleteDashboard = async (req, res, next) => {
-  try {
-    const { dashboardId } = req.params;
-    
-    // Find dashboard
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company
-    });
-    
-    if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
-    }
-    
-    // Check if user is authorized to delete dashboard
-    if (dashboard.createdBy.toString() !== req.user._id.toString() && 
-        req.user.role !== 'owner' && 
-        req.user.role !== 'admin') {
-      return next(createError(403, 'Not authorized to delete this dashboard'));
-    }
-    
-    // Don't allow deleting the only default dashboard
-    if (dashboard.isDefault) {
-      const defaultDashboardCount = await Dashboard.countDocuments({
-        project: dashboard.project,
-        isDefault: true,
-        isActive: true
-      });
-      
-      if (defaultDashboardCount <= 1) {
-        return next(createError(400, 'Cannot delete the only default dashboard. Create another default dashboard first.'));
-      }
-    }
-    
-    // Soft delete dashboard
-    dashboard.isActive = false;
-    await dashboard.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Dashboard deleted successfully'
-    });
-  } catch (error) {
-    next(createError(500, 'Error deleting dashboard: ' + error.message));
-  }
-};
+    // Also delete associated widgets
+    await Widget.deleteMany({ dashboardId: dashboardId });
 
-// Share dashboard with users
-exports.shareDashboard = async (req, res, next) => {
-  try {
-    const { dashboardId } = req.params;
-    const { users } = req.body;
-    
-    if (!users || !Array.isArray(users)) {
-      return next(createError(400, 'Users array is required'));
-    }
-    
-    // Find dashboard
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
-    }
-    
-    // Check if user is authorized to share dashboard
-    if (dashboard.createdBy.toString() !== req.user._id.toString() && 
-        req.user.role !== 'owner' && 
-        req.user.role !== 'admin') {
-      return next(createError(403, 'Not authorized to share this dashboard'));
-    }
-    
-    // Update shared users
-    for (const userShare of users) {
-      const existingShareIndex = dashboard.sharedWith.findIndex(
-        share => share.user.toString() === userShare.userId
-      );
-      
-      if (existingShareIndex >= 0) {
-        // Update existing share
-        dashboard.sharedWith[existingShareIndex].permission = userShare.permission || 'view';
-      } else {
-        // Add new share
-        dashboard.sharedWith.push({
-          user: userShare.userId,
-          permission: userShare.permission || 'view'
-        });
-      }
-    }
-    
-    await dashboard.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Dashboard shared successfully',
-      sharedWith: dashboard.sharedWith
-    });
-  } catch (error) {
-    next(createError(500, 'Error sharing dashboard: ' + error.message));
-  }
-};
+    await DashboardConfig.deleteOne({ _id: dashboardId });
 
-// Remove dashboard share
-exports.removeDashboardShare = async (req, res, next) => {
-  try {
-    const { dashboardId, userId } = req.params;
-    
-    // Find dashboard
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company,
-      isActive: true
-    });
-    
+    res.status(200).json(new ApiResponse(200, {}, "Dashboard deleted successfully"));
+});
+
+// @desc    Set a dashboard as default
+// @route   PUT /api/dashboards/:id/default
+// @access  Private
+const setDefaultDashboard = asyncHandler(async (req, res) => {
+    const dashboardId = req.params.id;
+    const dashboard = await DashboardConfig.findOne({ _id: dashboardId, userId: req.user.id });
+
     if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
+        throw new ApiError(404, "Dashboard not found");
     }
-    
-    // Check if user is authorized to modify shares
-    if (dashboard.createdBy.toString() !== req.user._id.toString() && 
-        req.user.role !== 'owner' && 
-        req.user.role !== 'admin') {
-      return next(createError(403, 'Not authorized to modify dashboard shares'));
-    }
-    
-    // Remove share
-    dashboard.sharedWith = dashboard.sharedWith.filter(
-      share => share.user.toString() !== userId
+
+    // Unset other defaults in the same scope
+    await DashboardConfig.updateMany(
+        { userId: req.user.id, projectId: dashboard.projectId, _id: { $ne: dashboardId } },
+        { $set: { isDefault: false } }
     );
-    
-    await dashboard.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Dashboard share removed successfully',
-      sharedWith: dashboard.sharedWith
-    });
-  } catch (error) {
-    next(createError(500, 'Error removing dashboard share: ' + error.message));
-  }
-};
 
-// Get dashboard widget data
-exports.getDashboardWidgetData = async (req, res, next) => {
-  try {
-    const { dashboardId, widgetId } = req.params;
-    
-    // Find dashboard
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company,
-      isActive: true,
-      $or: [
-        { createdBy: req.user._id },
-        { 'sharedWith.user': req.user._id },
-        { isDefault: true }
-      ]
-    });
-    
+    // Set this one as default
+    dashboard.isDefault = true;
+    await dashboard.save();
+
+    res.status(200).json(new ApiResponse(200, dashboard, "Dashboard set as default successfully"));
+});
+
+// --- Widget Controllers ---
+
+// @desc    Get all widgets for a dashboard
+// @route   GET /api/dashboards/:dashboardId/widgets
+// @access  Private
+const getWidgets = asyncHandler(async (req, res) => {
+    const dashboardId = req.params.dashboardId;
+    // Verify user owns the dashboard first
+    const dashboard = await DashboardConfig.findOne({ _id: dashboardId, userId: req.user.id });
     if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
+        throw new ApiError(404, "Dashboard not found or access denied");
     }
-    
-    // Find widget
-    const widget = dashboard.layout.widgets.id(widgetId);
-    
+
+    const widgets = await Widget.find({ dashboardId: dashboardId });
+    res.status(200).json(new ApiResponse(200, widgets, "Widgets retrieved successfully"));
+});
+
+// @desc    Get a specific widget configuration
+// @route   GET /api/widgets/:id
+// @access  Private
+const getWidgetById = asyncHandler(async (req, res) => {
+    const widget = await Widget.findById(req.params.id).populate("dashboardId");
+
     if (!widget) {
-      return next(createError(404, 'Widget not found'));
+        throw new ApiError(404, "Widget not found");
     }
-    
-    // Get widget data based on type
-    let data;
-    
-    switch (widget.type) {
-      case 'project_summary':
-        // Get project summary data
-        const project = await Project.findById(dashboard.project);
-        data = {
-          name: project.name,
-          status: project.status,
-          startDate: project.startDate,
-          endDate: project.endDate,
-          budget: project.budget,
-          client: project.client
-        };
-        break;
-        
-      case 'task_status':
-        // Get task status data
-        const Task = require('../models/task.model');
-        const taskCounts = await Task.aggregate([
-          { $match: { project: dashboard.project, isActive: true } },
-          { $group: { _id: '$status', count: { $sum: 1 } } }
-        ]);
-        
-        data = {
-          statusCounts: {
-            backlog: 0,
-            todo: 0,
-            in_progress: 0,
-            review: 0,
-            completed: 0,
-            blocked: 0
-          }
-        };
-        
-        taskCounts.forEach(item => {
-          data.statusCounts[item._id] = item.count;
-        });
-        break;
-        
-      case 'upcoming_milestones':
-        // Get upcoming milestones
-        const Milestone = require('../models/milestone.model');
-        const milestones = await Milestone.find({
-          project: dashboard.project,
-          isActive: true,
-          date: { $gte: new Date() }
-        })
-        .sort({ date: 1 })
-        .limit(5);
-        
-        data = { milestones };
-        break;
-        
-      case 'recent_activity':
-        // Get recent activity
-        const Activity = require('../models/activity.model');
-        const activities = await Activity.find({
-          project: dashboard.project
-        })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate('user', 'firstName lastName');
-        
-        data = { activities };
-        break;
-        
-      default:
-        data = { message: 'Widget type not supported' };
-    }
-    
-    res.status(200).json({
-      success: true,
-      widget,
-      data
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching widget data: ' + error.message));
-  }
-};
 
-// Add widget to dashboard
-exports.addDashboardWidget = async (req, res, next) => {
-  try {
-    const { dashboardId } = req.params;
-    const { type, title, size, position, config, dataSource, refreshInterval } = req.body;
-    
-    // Validate widget type
-    const validTypes = [
-      'project_summary',
-      'task_status',
-      'schedule_timeline',
-      'budget_overview',
-      'team_performance',
-      'recent_activity',
-      'upcoming_milestones',
-      'risk_assessment',
-      'weather_forecast',
-      'document_activity',
-      'quality_metrics',
-      'safety_incidents',
-      'custom_chart'
-    ];
-    
-    if (!validTypes.includes(type)) {
-      return next(createError(400, 'Invalid widget type'));
+    // Verify user owns the dashboard associated with the widget
+    if (widget.dashboardId.userId.toString() !== req.user.id.toString()) {
+        throw new ApiError(403, "Access denied to this widget");
     }
-    
-    // Find dashboard
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
-    }
-    
-    // Check if user is authorized to update dashboard
-    const canEdit = dashboard.createdBy.toString() === req.user._id.toString() ||
-                   dashboard.sharedWith.some(share => 
-                     share.user.toString() === req.user._id.toString() && 
-                     share.permission === 'edit'
-                   );
-    
-    if (!canEdit) {
-      return next(createError(403, 'Not authorized to update this dashboard'));
-    }
-    
-    // Add widget
-    dashboard.layout.widgets.push({
-      type,
-      title: title || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      size: size || { width: 1, height: 1 },
-      position: position || { x: 0, y: 0 },
-      config: config || {},
-      dataSource,
-      refreshInterval: refreshInterval || 300
-    });
-    
-    await dashboard.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Widget added successfully',
-      dashboard
-    });
-  } catch (error) {
-    next(createError(500, 'Error adding widget: ' + error.message));
-  }
-};
 
-// Update dashboard widget
-exports.updateDashboardWidget = async (req, res, next) => {
-  try {
-    const { dashboardId, widgetId } = req.params;
-    const { title, size, position, config, dataSource, refreshInterval } = req.body;
-    
-    // Find dashboard
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company,
-      isActive: true
-    });
-    
+    res.status(200).json(new ApiResponse(200, widget, "Widget retrieved successfully"));
+});
+
+// @desc    Add a widget to a dashboard
+// @route   POST /api/dashboards/:dashboardId/widgets
+// @access  Private
+const addWidget = asyncHandler(async (req, res) => {
+    const dashboardId = req.params.dashboardId;
+    const { type, title, dataSource, dataConfig, visualConfig, position, refreshInterval } = req.body;
+
+    // Verify user owns the dashboard
+    const dashboard = await DashboardConfig.findOne({ _id: dashboardId, userId: req.user.id });
     if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
+        throw new ApiError(404, "Dashboard not found or access denied");
     }
-    
-    // Check if user is authorized to update dashboard
-    const canEdit = dashboard.createdBy.toString() === req.user._id.toString() ||
-                   dashboard.sharedWith.some(share => 
-                     share.user.toString() === req.user._id.toString() && 
-                     share.permission === 'edit'
-                   );
-    
-    if (!canEdit) {
-      return next(createError(403, 'Not authorized to update this dashboard'));
+
+    if (!type || !title || !dataSource || !dataConfig || !visualConfig || !position) {
+        throw new ApiError(400, "Missing required widget fields");
     }
-    
-    // Find widget
-    const widget = dashboard.layout.widgets.id(widgetId);
-    
+
+    const widget = await Widget.create({
+        dashboardId,
+        type,
+        title,
+        dataSource,
+        dataConfig,
+        visualConfig,
+        position,
+        refreshInterval: refreshInterval || 300, // Default if not provided
+    });
+
+    res.status(201).json(new ApiResponse(201, widget, "Widget added successfully"));
+});
+
+// @desc    Update a widget configuration
+// @route   PUT /api/widgets/:id
+// @access  Private
+const updateWidget = asyncHandler(async (req, res) => {
+    const widgetId = req.params.id;
+    const updates = req.body;
+
+    const widget = await Widget.findById(widgetId).populate("dashboardId");
+
     if (!widget) {
-      return next(createError(404, 'Widget not found'));
+        throw new ApiError(404, "Widget not found");
     }
-    
-    // Update widget
-    if (title) widget.title = title;
-    if (size) widget.size = size;
-    if (position) widget.position = position;
-    if (config) widget.config = config;
-    if (dataSource) widget.dataSource = dataSource;
-    if (refreshInterval) widget.refreshInterval = refreshInterval;
-    
-    await dashboard.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Widget updated successfully',
-      widget
+
+    // Verify user owns the dashboard associated with the widget
+    if (widget.dashboardId.userId.toString() !== req.user.id.toString()) {
+        throw new ApiError(403, "Access denied to update this widget");
+    }
+
+    // Update allowed fields
+    Object.keys(updates).forEach(key => {
+        if (key !== "_id" && key !== "dashboardId" && key !== "createdAt" && key !== "updatedAt") {
+            widget[key] = updates[key];
+        }
     });
-  } catch (error) {
-    next(createError(500, 'Error updating widget: ' + error.message));
-  }
+
+    await widget.save();
+
+    res.status(200).json(new ApiResponse(200, widget, "Widget updated successfully"));
+});
+
+// @desc    Remove a widget from a dashboard
+// @route   DELETE /api/widgets/:id
+// @access  Private
+const removeWidget = asyncHandler(async (req, res) => {
+    const widgetId = req.params.id;
+    const widget = await Widget.findById(widgetId).populate("dashboardId");
+
+    if (!widget) {
+        throw new ApiError(404, "Widget not found");
+    }
+
+    // Verify user owns the dashboard associated with the widget
+    if (widget.dashboardId.userId.toString() !== req.user.id.toString()) {
+        throw new ApiError(403, "Access denied to remove this widget");
+    }
+
+    await Widget.deleteOne({ _id: widgetId });
+
+    res.status(200).json(new ApiResponse(200, {}, "Widget removed successfully"));
+});
+
+// @desc    Get data for a specific widget
+// @route   GET /api/widgets/:id/data
+// @access  Private
+const getWidgetData = asyncHandler(async (req, res) => {
+    const widgetId = req.params.id;
+    const widget = await Widget.findById(widgetId).populate("dashboardId");
+
+    if (!widget) {
+        throw new ApiError(404, "Widget not found");
+    }
+
+    // Verify user owns the dashboard associated with the widget
+    if (widget.dashboardId.userId.toString() !== req.user.id.toString()) {
+        throw new ApiError(403, "Access denied to this widget's data");
+    }
+
+    // --- Data Fetching Logic ---
+    // This is where you'd implement the logic to fetch data based on
+    // widget.dataSource and widget.dataConfig.
+    // This would likely involve calling functions from other controllers/services.
+    // Example placeholder:
+    let data = {};
+    try {
+        const [moduleName, functionName] = widget.dataSource.split('/');
+        // Dynamically import or use a service registry to call the correct function
+        // const dataService = require(`../services/${moduleName}.service`); // Example structure
+        // data = await dataService[functionName](widget.dataConfig, req.user);
+        data = { placeholder: `Data for ${widget.title} from ${widget.dataSource}`, config: widget.dataConfig }; // Replace with actual data fetching
+    } catch (error) {
+        console.error(`Error fetching data for widget ${widgetId}:`, error);
+        throw new ApiError(500, `Failed to fetch data for widget: ${error.message}`);
+    }
+    // --- End Data Fetching Logic ---
+
+    res.status(200).json(new ApiResponse(200, data, "Widget data retrieved successfully"));
+});
+
+
+module.exports = {
+    getDashboards,
+    getDashboardById,
+    createDashboard,
+    updateDashboard,
+    deleteDashboard,
+    setDefaultDashboard,
+    getWidgets,
+    getWidgetById,
+    addWidget,
+    updateWidget,
+    removeWidget,
+    getWidgetData,
 };
 
-// Remove dashboard widget
-exports.removeDashboardWidget = async (req, res, next) => {
-  try {
-    const { dashboardId, widgetId } = req.params;
-    
-    // Find dashboard
-    const dashboard = await Dashboard.findOne({
-      _id: dashboardId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!dashboard) {
-      return next(createError(404, 'Dashboard not found'));
-    }
-    
-    // Check if user is authorized to update dashboard
-    const canEdit = dashboard.createdBy.toString() === req.user._id.toString() ||
-                   dashboard.sharedWith.some(share => 
-                     share.user.toString() === req.user._id.toString() && 
-                     share.permission === 'edit'
-                   );
-    
-    if (!canEdit) {
-      return next(createError(403, 'Not authorized to update this dashboard'));
-    }
-    
-    // Find widget
-    const widgetIndex = dashboard.layout.widgets.findIndex(
-      widget => widget._id.toString() === widgetId
-    );
-    
-    if (widgetIndex === -1) {
-      return next(createError(404, 'Widget not found'));
-    }
-    
-    // Remove widget
-    dashboard.layout.widgets.splice(widgetIndex, 1);
-    await dashboard.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Widget removed successfully'
-    });
-  } catch (error) {
-    next(createError(500, 'Error removing widget: ' + error.message));
-  }
-};

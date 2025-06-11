@@ -1,878 +1,580 @@
-const Task = require('../models/task.model');
-const Project = require('../models/project.model');
-const User = require('../models/user.model');
-const { createError } = require('../utils/error');
+const Task = require("../models/task.model");
+const Project = require("../models/project.model"); // To verify project access
+const TaskDependency = require("../models/taskDependency.model");
+const TaskComment = require("../models/taskComment.model");
+const TaskAttachment = require("../models/taskAttachment.model");
+const TimeEntry = require("../models/timeEntry.model");
+const asyncHandler = require("../utils/asyncHandler");
+const ApiError = require("../utils/ApiError");
+const ApiResponse = require("../utils/ApiResponse");
+// Add file handling (e.g., multer for uploads) if not already configured globally
 
-// Create a new task
-exports.createTask = async (req, res, next) => {
-  try {
-    const { 
-      title, 
-      description, 
-      projectId, 
-      status, 
-      priority, 
-      assignedTo, 
-      dueDate, 
-      startDate, 
-      estimatedHours, 
-      tags, 
-      subtasks,
-      dependencies
+// Helper function to check project access
+const checkProjectAccess = async (projectId, userId, companyId) => {
+    const project = await Project.findOne({ _id: projectId, companyId: companyId });
+    if (!project) {
+        throw new ApiError(404, "Project not found or access denied");
+    }
+    // Add more granular permission checks based on ProjectMember if needed
+    // const member = await ProjectMember.findOne({ projectId, userId });
+    // if (!member) throw new ApiError(403, "User is not a member of this project");
+    return project;
+};
+
+// Helper function to check task access (ensures task belongs to an accessible project)
+const checkTaskAccess = async (taskId, userId, companyId) => {
+    const task = await Task.findById(taskId).populate("projectId");
+    if (!task) {
+        throw new ApiError(404, "Task not found");
+    }
+    if (task.projectId.companyId.toString() !== companyId.toString()) {
+        throw new ApiError(403, "Access denied to this task");
+    }
+    // Add member check if needed
+    return task;
+};
+
+// --- Task Controllers ---
+
+// @desc    List all tasks for a project
+// @route   GET /api/projects/:projectId/tasks
+// @access  Private
+const getProjectTasks = asyncHandler(async (req, res) => {
+    const projectId = req.params.projectId;
+    await checkProjectAccess(projectId, req.user.id, req.user.companyId);
+
+    // Add filtering (status, priority, assignedTo, phaseId), sorting, pagination
+    const tasks = await Task.find({ projectId: projectId })
+        .populate("assignedTo", "firstName lastName email")
+        .populate("createdBy", "firstName lastName email")
+        .sort({ createdAt: -1 });
+
+    res.status(200).json(new ApiResponse(200, tasks, "Tasks retrieved successfully"));
+});
+
+// @desc    Get specific task details
+// @route   GET /api/tasks/:id
+// @access  Private
+const getTaskById = asyncHandler(async (req, res) => {
+    const task = await checkTaskAccess(req.params.id, req.user.id, req.user.companyId);
+
+    // Populate related fields
+    await task.populate([
+        { path: "assignedTo", select: "firstName lastName email" },
+        { path: "createdBy", select: "firstName lastName email" },
+        { path: "phaseId", select: "name" },
+        { path: "parentTaskId", select: "title" }
+    ]);
+
+    res.status(200).json(new ApiResponse(200, task, "Task retrieved successfully"));
+});
+
+// @desc    Create new task
+// @route   POST /api/projects/:projectId/tasks
+// @access  Private
+const createTask = asyncHandler(async (req, res) => {
+    const projectId = req.params.projectId;
+    await checkProjectAccess(projectId, req.user.id, req.user.companyId);
+
+    const {
+        phaseId, parentTaskId, title, description, status, priority,
+        assignedTo, startDate, dueDate, estimatedHours, tags
     } = req.body;
-    
-    // Check if project exists and belongs to user's company
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
+
+    if (!title || !assignedTo || !startDate || !dueDate) {
+        throw new ApiError(400, "Title, assigned user, start date, and due date are required");
+    }
+
+    const task = await Task.create({
+        projectId,
+        phaseId,
+        parentTaskId,
+        title,
+        description,
+        status: status || "Not Started",
+        priority: priority || "Medium",
+        assignedTo,
+        createdBy: req.user.id,
+        startDate,
+        dueDate,
+        estimatedHours,
+        tags,
     });
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
+
+    res.status(201).json(new ApiResponse(201, task, "Task created successfully"));
+});
+
+// @desc    Update task details
+// @route   PUT /api/tasks/:id
+// @access  Private
+const updateTask = asyncHandler(async (req, res) => {
+    const taskId = req.params.id;
+    const updates = req.body;
+    const task = await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    // Prevent updating certain fields
+    delete updates.projectId;
+    delete updates.createdBy;
+    delete updates.createdAt;
+    delete updates.updatedAt;
+    delete updates.isDeleted;
+    delete updates.deletedAt;
+    delete updates.actualHours; // Should be updated via time entries
+
+    // Handle completion percentage/date if status changes to Completed
+    if (updates.status === "Completed" && task.status !== "Completed") {
+        updates.completedDate = new Date();
+        updates.completionPercentage = 100;
+    } else if (updates.status && updates.status !== "Completed") {
+        updates.completedDate = null; // Clear completed date if status changes from Completed
+        // Optionally reset completionPercentage or handle it based on logic
     }
-    
-    // Check if assigned user exists and belongs to the company
-    let assignedUser = null;
-    if (assignedTo) {
-      assignedUser = await User.findOne({
-        _id: assignedTo,
-        company: req.user.company
-      });
-      
-      if (!assignedUser) {
-        return next(createError(404, 'Assigned user not found or not part of your company'));
-      }
-    }
-    
-    // Create new task
-    const task = new Task({
-      title,
-      description,
-      project: projectId,
-      company: req.user.company,
-      status: status || 'todo',
-      priority: priority || 'medium',
-      assignedTo: assignedTo || null,
-      createdBy: req.user._id,
-      dueDate,
-      startDate,
-      estimatedHours,
-      tags: tags || [],
-      subtasks: subtasks || []
-    });
-    
-    // Add dependencies if provided
-    if (dependencies && Array.isArray(dependencies)) {
-      // Validate each dependency
-      for (const dep of dependencies) {
-        const dependencyTask = await Task.findOne({
-          _id: dep.task,
-          project: projectId
-        });
-        
-        if (!dependencyTask) {
-          return next(createError(404, `Dependency task ${dep.task} not found`));
-        }
-        
-        task.dependencies.push({
-          task: dep.task,
-          type: dep.type || 'finish_to_start'
-        });
-      }
-    }
-    
+
+    Object.assign(task, updates);
     await task.save();
-    
-    // Populate task with user information
-    await task.populate('assignedTo', 'firstName lastName email');
-    await task.populate('createdBy', 'firstName lastName email');
-    
-    res.status(201).json({
-      success: true,
-      task
-    });
-  } catch (error) {
-    next(createError(500, 'Error creating task: ' + error.message));
-  }
-};
 
-// Get all tasks for a project
-exports.getProjectTasks = async (req, res, next) => {
-  try {
-    const { projectId } = req.params;
-    const { status, priority, assignedTo, search, sort, limit = 50, page = 1 } = req.query;
-    
-    // Check if project exists and belongs to user's company
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    });
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
-    }
-    
-    // Build query
-    const query = { 
-      project: projectId,
-      company: req.user.company,
-      isActive: true
-    };
-    
-    // Filter by status if provided
-    if (status) {
-      query.status = status;
-    }
-    
-    // Filter by priority if provided
-    if (priority) {
-      query.priority = priority;
-    }
-    
-    // Filter by assigned user if provided
-    if (assignedTo) {
-      query.assignedTo = assignedTo;
-    }
-    
-    // Search by title or description
-    if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    // Build sort options
-    let sortOptions = { createdAt: -1 }; // Default sort by creation date (newest first)
-    if (sort) {
-      const [field, order] = sort.split(':');
-      sortOptions = { [field]: order === 'desc' ? -1 : 1 };
-    }
-    
-    // Calculate pagination
-    const skip = (page - 1) * limit;
-    
-    // Execute query with pagination
-    const tasks = await Task.find(query)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('assignedTo', 'firstName lastName email')
-      .populate('createdBy', 'firstName lastName email');
-    
-    // Get total count for pagination
-    const totalTasks = await Task.countDocuments(query);
-    
-    res.status(200).json({
-      success: true,
-      count: tasks.length,
-      totalPages: Math.ceil(totalTasks / limit),
-      currentPage: parseInt(page),
-      tasks
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching tasks: ' + error.message));
-  }
-};
+    res.status(200).json(new ApiResponse(200, task, "Task updated successfully"));
+});
 
-// Get task by ID
-exports.getTaskById = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    
-    const task = await Task.findOne({
-      _id: taskId,
-      company: req.user.company,
-      isActive: true
-    })
-      .populate('assignedTo', 'firstName lastName email')
-      .populate('createdBy', 'firstName lastName email')
-      .populate('dependencies.task', 'title status');
-    
-    if (!task) {
-      return next(createError(404, 'Task not found'));
-    }
-    
-    res.status(200).json({
-      success: true,
-      task
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching task: ' + error.message));
-  }
-};
+// @desc    Delete task (soft delete)
+// @route   DELETE /api/tasks/:id
+// @access  Private
+const deleteTask = asyncHandler(async (req, res) => {
+    const taskId = req.params.id;
+    const task = await checkTaskAccess(taskId, req.user.id, req.user.companyId);
 
-// Update task
-exports.updateTask = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    const { 
-      title, 
-      description, 
-      status, 
-      priority, 
-      assignedTo, 
-      dueDate, 
-      startDate, 
-      estimatedHours, 
-      actualHours,
-      tags, 
-      subtasks,
-      dependencies
-    } = req.body;
-    
-    // Find task
-    const task = await Task.findOne({
-      _id: taskId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!task) {
-      return next(createError(404, 'Task not found'));
-    }
-    
-    // Check if assigned user exists and belongs to the company
-    if (assignedTo) {
-      const assignedUser = await User.findOne({
-        _id: assignedTo,
-        company: req.user.company
-      });
-      
-      if (!assignedUser) {
-        return next(createError(404, 'Assigned user not found or not part of your company'));
-      }
-    }
-    
-    // Update task fields
-    if (title) task.title = title;
-    if (description !== undefined) task.description = description;
-    
-    // If status is changing to completed, set completedDate
-    if (status && status === 'completed' && task.status !== 'completed') {
-      task.completedDate = new Date();
-    }
-    
-    if (status) task.status = status;
-    if (priority) task.priority = priority;
-    if (assignedTo !== undefined) task.assignedTo = assignedTo;
-    if (dueDate) task.dueDate = dueDate;
-    if (startDate) task.startDate = startDate;
-    if (estimatedHours) task.estimatedHours = estimatedHours;
-    if (actualHours) task.actualHours = actualHours;
-    if (tags) task.tags = tags;
-    
-    // Update subtasks if provided
-    if (subtasks && Array.isArray(subtasks)) {
-      // Keep existing subtasks that aren't in the new list
-      const existingSubtaskIds = task.subtasks
-        .filter(st => st._id)
-        .map(st => st._id.toString());
-      
-      const newSubtasks = subtasks.filter(st => !st._id);
-      const updatedSubtasks = subtasks.filter(st => st._id);
-      
-      // Update existing subtasks
-      for (const updatedSubtask of updatedSubtasks) {
-        const subtaskIndex = task.subtasks.findIndex(
-          st => st._id.toString() === updatedSubtask._id
-        );
-        
-        if (subtaskIndex !== -1) {
-          task.subtasks[subtaskIndex].title = updatedSubtask.title || task.subtasks[subtaskIndex].title;
-          task.subtasks[subtaskIndex].isCompleted = updatedSubtask.isCompleted !== undefined ? 
-            updatedSubtask.isCompleted : task.subtasks[subtaskIndex].isCompleted;
-          task.subtasks[subtaskIndex].assignedTo = updatedSubtask.assignedTo || task.subtasks[subtaskIndex].assignedTo;
-          
-          // Set completedAt date if newly completed
-          if (updatedSubtask.isCompleted && !task.subtasks[subtaskIndex].completedAt) {
-            task.subtasks[subtaskIndex].completedAt = new Date();
-          }
-        }
-      }
-      
-      // Add new subtasks
-      task.subtasks.push(...newSubtasks);
-    }
-    
-    // Update dependencies if provided
-    if (dependencies && Array.isArray(dependencies)) {
-      // Clear existing dependencies
-      task.dependencies = [];
-      
-      // Add new dependencies
-      for (const dep of dependencies) {
-        const dependencyTask = await Task.findOne({
-          _id: dep.task,
-          project: task.project
-        });
-        
-        if (!dependencyTask) {
-          return next(createError(404, `Dependency task ${dep.task} not found`));
-        }
-        
-        // Check for circular dependencies
-        if (dep.task.toString() === taskId) {
-          return next(createError(400, 'Task cannot depend on itself'));
-        }
-        
-        // Check if the dependency task depends on this task (would create a circular dependency)
-        const circularCheck = await Task.findOne({
-          _id: dep.task,
-          'dependencies.task': taskId
-        });
-        
-        if (circularCheck) {
-          return next(createError(400, 'Circular dependency detected'));
-        }
-        
-        task.dependencies.push({
-          task: dep.task,
-          type: dep.type || 'finish_to_start'
-        });
-      }
-    }
-    
+    task.isDeleted = true;
+    task.deletedAt = new Date();
     await task.save();
-    
-    // Populate task with user information
-    await task.populate('assignedTo', 'firstName lastName email');
-    await task.populate('createdBy', 'firstName lastName email');
-    await task.populate('dependencies.task', 'title status');
-    
-    res.status(200).json({
-      success: true,
-      task
-    });
-  } catch (error) {
-    next(createError(500, 'Error updating task: ' + error.message));
-  }
-};
 
-// Delete task
-exports.deleteTask = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    
-    // Find task
-    const task = await Task.findOne({
-      _id: taskId,
-      company: req.user.company
-    });
-    
-    if (!task) {
-      return next(createError(404, 'Task not found'));
+    // Optionally soft delete subtasks, comments, attachments, time entries, dependencies
+    // await Task.updateMany({ parentTaskId: taskId }, { $set: { isDeleted: true, deletedAt: new Date() } });
+    // ... similar updates for other related models
+
+    res.status(200).json(new ApiResponse(200, {}, "Task deleted successfully"));
+});
+
+// --- Task Dependency Controllers ---
+
+// @desc    List all dependencies for a task
+// @route   GET /api/tasks/:taskId/dependencies
+// @access  Private
+const getTaskDependencies = asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    const predecessors = await TaskDependency.find({ successorTaskId: taskId })
+        .populate("predecessorTaskId", "title status");
+    const successors = await TaskDependency.find({ predecessorTaskId: taskId })
+        .populate("successorTaskId", "title status");
+
+    res.status(200).json(new ApiResponse(200, { predecessors, successors }, "Task dependencies retrieved successfully"));
+});
+
+// @desc    Add dependency to task
+// @route   POST /api/tasks/:taskId/dependencies
+// @access  Private
+const addTaskDependency = asyncHandler(async (req, res) => {
+    const successorTaskId = req.params.taskId; // The task receiving the dependency
+    const { predecessorTaskId, type, lag } = req.body;
+
+    // Check access for both tasks
+    await checkTaskAccess(successorTaskId, req.user.id, req.user.companyId);
+    await checkTaskAccess(predecessorTaskId, req.user.id, req.user.companyId);
+
+    if (!predecessorTaskId) {
+        throw new ApiError(400, "Predecessor task ID is required");
     }
-    
-    // Check if user is authorized to delete task
-    const isProjectManager = await Project.findOne({
-      _id: task.project,
-      'team.user': req.user._id,
-      'team.role': 'project_manager'
-    });
-    
-    if (task.createdBy.toString() !== req.user._id.toString() && 
-        !isProjectManager && 
-        req.user.role !== 'owner' && 
-        req.user.role !== 'admin') {
-      return next(createError(403, 'Not authorized to delete this task'));
+
+    if (predecessorTaskId === successorTaskId) {
+        throw new ApiError(400, "A task cannot depend on itself");
     }
-    
-    // Check if any other tasks depend on this one
-    const dependentTasks = await Task.find({
-      'dependencies.task': taskId,
-      isActive: true
+
+    // Check for circular dependencies (complex logic, potentially skip for basic implementation)
+
+    const dependency = await TaskDependency.create({
+        predecessorTaskId,
+        successorTaskId,
+        type: type || "Finish-to-Start",
+        lag: lag || 0,
+        createdBy: req.user.id,
     });
-    
-    if (dependentTasks.length > 0) {
-      return next(createError(400, 'Cannot delete task because other tasks depend on it. Remove dependencies first.'));
+
+    res.status(201).json(new ApiResponse(201, dependency, "Task dependency added successfully"));
+});
+
+// @desc    Remove dependency
+// @route   DELETE /api/tasks/dependencies/:id
+// @access  Private
+const removeTaskDependency = asyncHandler(async (req, res) => {
+    const dependencyId = req.params.id;
+
+    const dependency = await TaskDependency.findById(dependencyId)
+        .populate({ path: "successorTaskId", populate: { path: "projectId" } }); // Need project for access check
+
+    if (!dependency) {
+        throw new ApiError(404, "Dependency not found");
     }
-    
-    // Soft delete task
-    task.isActive = false;
+
+    // Check access via the successor task
+    if (dependency.successorTaskId.projectId.companyId.toString() !== req.user.companyId.toString()) {
+        throw new ApiError(403, "Access denied to remove this dependency");
+    }
+
+    await TaskDependency.deleteOne({ _id: dependencyId });
+
+    res.status(200).json(new ApiResponse(200, {}, "Task dependency removed successfully"));
+});
+
+// --- Task Comment Controllers ---
+
+// @desc    List all comments for a task
+// @route   GET /api/tasks/:taskId/comments
+// @access  Private
+const getTaskComments = asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    const comments = await TaskComment.find({ taskId: taskId })
+        .populate("createdBy", "firstName lastName email avatar")
+        .sort({ createdAt: 1 }); // Sort oldest first
+
+    res.status(200).json(new ApiResponse(200, comments, "Task comments retrieved successfully"));
+});
+
+// @desc    Add comment to task
+// @route   POST /api/tasks/:taskId/comments
+// @access  Private
+const addTaskComment = asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    const { content } = req.body;
+    await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    if (!content) {
+        throw new ApiError(400, "Comment content is required");
+    }
+
+    const comment = await TaskComment.create({
+        taskId,
+        content,
+        createdBy: req.user.id,
+    });
+
+    // Populate createdBy before sending response
+    await comment.populate("createdBy", "firstName lastName email avatar");
+
+    res.status(201).json(new ApiResponse(201, comment, "Task comment added successfully"));
+});
+
+// --- Task Attachment Controllers ---
+// Requires file upload middleware (e.g., multer) configured
+
+// @desc    List all attachments for a task
+// @route   GET /api/tasks/:taskId/attachments
+// @access  Private
+const getTaskAttachments = asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    const attachments = await TaskAttachment.find({ taskId: taskId })
+        .populate("uploadedBy", "firstName lastName email");
+
+    res.status(200).json(new ApiResponse(200, attachments, "Task attachments retrieved successfully"));
+});
+
+// @desc    Upload attachment to task
+// @route   POST /api/tasks/:taskId/attachments
+// @access  Private
+const addTaskAttachment = asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    // Assuming multer middleware handles the upload and adds file info to req.file
+    if (!req.file) {
+        throw new ApiError(400, "No file uploaded");
+    }
+
+    const { originalname, size, mimetype, path } = req.file;
+
+    const attachment = await TaskAttachment.create({
+        taskId,
+        fileName: originalname,
+        fileSize: size,
+        fileType: mimetype,
+        filePath: path, // Path where multer stored the file (e.g., local path or S3 key)
+        uploadedBy: req.user.id,
+    });
+
+    res.status(201).json(new ApiResponse(201, attachment, "Attachment uploaded successfully"));
+});
+
+// @desc    Delete attachment
+// @route   DELETE /api/tasks/attachments/:id
+// @access  Private
+const removeTaskAttachment = asyncHandler(async (req, res) => {
+    const attachmentId = req.params.id;
+
+    const attachment = await TaskAttachment.findById(attachmentId)
+        .populate({ path: "taskId", populate: { path: "projectId" } });
+
+    if (!attachment) {
+        throw new ApiError(404, "Attachment not found");
+    }
+
+    // Check access via the task
+    if (attachment.taskId.projectId.companyId.toString() !== req.user.companyId.toString()) {
+        throw new ApiError(403, "Access denied to remove this attachment");
+    }
+
+    // TODO: Delete the actual file from storage (e.g., S3 or local filesystem)
+    // fs.unlink(attachment.filePath, (err) => { ... });
+
+    await TaskAttachment.deleteOne({ _id: attachmentId });
+
+    res.status(200).json(new ApiResponse(200, {}, "Attachment removed successfully"));
+});
+
+// --- Time Entry Controllers ---
+
+// @desc    List all time entries for a task
+// @route   GET /api/tasks/:taskId/time-entries
+// @access  Private
+const getTaskTimeEntries = asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    // Add filtering by user, date range
+    const timeEntries = await TimeEntry.find({ taskId: taskId })
+        .populate("userId", "firstName lastName email")
+        .sort({ startTime: -1 });
+
+    res.status(200).json(new ApiResponse(200, timeEntries, "Time entries retrieved successfully"));
+});
+
+// @desc    Create time entry for task (manual entry)
+// @route   POST /api/tasks/:taskId/time-entries
+// @access  Private
+const addTimeEntry = asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    const { description, startTime, endTime, duration, billable, userId } = req.body;
+    await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    const entryUserId = userId || req.user.id; // Allow admins to log time for others?
+
+    if (!startTime || (!endTime && !duration)) {
+        throw new ApiError(400, "Start time and either end time or duration are required for manual entry");
+    }
+
+    let entryDuration = duration;
+    let entryEndTime = endTime;
+
+    if (startTime && endTime) {
+        entryDuration = Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60));
+    } else if (startTime && duration) {
+        entryEndTime = new Date(new Date(startTime).getTime() + duration * 60 * 1000);
+    }
+
+    const timeEntry = await TimeEntry.create({
+        taskId,
+        userId: entryUserId,
+        description,
+        startTime,
+        endTime: entryEndTime,
+        duration: entryDuration,
+        billable: billable || false,
+        isRunning: false, // Manual entries are never running
+    });
+
+    // Update task actualHours
+    const task = await Task.findById(taskId);
+    const totalDuration = await TimeEntry.aggregate([
+        { $match: { taskId: mongoose.Types.ObjectId(taskId) } },
+        { $group: { _id: null, totalMinutes: { $sum: "$duration" } } }
+    ]);
+    task.actualHours = totalDuration.length > 0 ? (totalDuration[0].totalMinutes / 60).toFixed(2) : 0;
     await task.save();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Task deleted successfully'
-    });
-  } catch (error) {
-    next(createError(500, 'Error deleting task: ' + error.message));
-  }
-};
 
-// Add comment to task
-exports.addTaskComment = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    const { text, attachments } = req.body;
-    
-    if (!text) {
-      return next(createError(400, 'Comment text is required'));
-    }
-    
-    // Find task
-    const task = await Task.findOne({
-      _id: taskId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!task) {
-      return next(createError(404, 'Task not found'));
-    }
-    
-    // Add comment
-    task.comments.push({
-      text,
-      author: req.user._id,
-      attachments: attachments || []
-    });
-    
-    await task.save();
-    
-    // Get the newly added comment
-    const newComment = task.comments[task.comments.length - 1];
-    
-    // Populate author information
-    await task.populate('comments.author', 'firstName lastName email');
-    
-    res.status(201).json({
-      success: true,
-      comment: task.comments.id(newComment._id)
-    });
-  } catch (error) {
-    next(createError(500, 'Error adding comment: ' + error.message));
-  }
-};
+    res.status(201).json(new ApiResponse(201, timeEntry, "Time entry added successfully"));
+});
 
-// Start time tracking
-exports.startTimeTracking = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    const { notes } = req.body;
-    
-    // Find task
-    const task = await Task.findOne({
-      _id: taskId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!task) {
-      return next(createError(404, 'Task not found'));
-    }
-    
-    // Check if user already has an active time tracking session for this task
-    const activeSession = task.timeTracking.find(
-      session => session.user.toString() === req.user._id.toString() && !session.endTime
+// @desc    Start time tracking for a task
+// @route   POST /api/tasks/:taskId/time-entries/start
+// @access  Private
+const startTimeTracking = asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    await checkTaskAccess(taskId, req.user.id, req.user.companyId);
+
+    // Stop any currently running timer for the user
+    const runningTimer = await TimeEntry.findOneAndUpdate(
+        { userId: req.user.id, isRunning: true },
+        { $set: { endTime: new Date(), isRunning: false } },
+        { new: true } // `new` option returns the modified document
     );
-    
-    if (activeSession) {
-      return next(createError(400, 'You already have an active time tracking session for this task'));
+
+    // Manually trigger pre-save hook if needed or recalculate duration here
+    if (runningTimer) {
+        runningTimer.duration = Math.round((runningTimer.endTime.getTime() - runningTimer.startTime.getTime()) / (1000 * 60));
+        await runningTimer.save();
+        // Update the previous task's actual hours
+        const prevTask = await Task.findById(runningTimer.taskId);
+        if (prevTask) {
+            const totalDuration = await TimeEntry.aggregate([
+                { $match: { taskId: mongoose.Types.ObjectId(runningTimer.taskId) } },
+                { $group: { _id: null, totalMinutes: { $sum: "$duration" } } }
+            ]);
+            prevTask.actualHours = totalDuration.length > 0 ? (totalDuration[0].totalMinutes / 60).toFixed(2) : 0;
+            await prevTask.save();
+        }
     }
-    
-    // Add new time tracking session
-    task.timeTracking.push({
-      user: req.user._id,
-      startTime: new Date(),
-      notes: notes || ''
+
+    // Start new timer
+    const newTimer = await TimeEntry.create({
+        taskId,
+        userId: req.user.id,
+        startTime: new Date(),
+        isRunning: true,
+        billable: req.body.billable || false, // Optionally set billable on start
+        description: req.body.description || "", // Optionally add description on start
     });
-    
-    await task.save();
-    
-    // Get the newly added session
-    const newSession = task.timeTracking[task.timeTracking.length - 1];
-    
-    res.status(201).json({
-      success: true,
-      timeTracking: newSession
-    });
-  } catch (error) {
-    next(createError(500, 'Error starting time tracking: ' + error.message));
-  }
+
+    res.status(201).json(new ApiResponse(201, newTimer, "Time tracking started successfully"));
+});
+
+// @desc    Stop time tracking for a specific entry
+// @route   PUT /api/time-entries/:id/stop
+// @access  Private
+const stopTimeTracking = asyncHandler(async (req, res) => {
+    const timeEntryId = req.params.id;
+
+    const timer = await TimeEntry.findOne({ _id: timeEntryId, userId: req.user.id });
+
+    if (!timer) {
+        throw new ApiError(404, "Time entry not found or access denied");
+    }
+
+    if (!timer.isRunning) {
+        throw new ApiError(400, "Timer is not running");
+    }
+
+    timer.endTime = new Date();
+    timer.isRunning = false;
+    // Duration is calculated in pre-save hook
+    await timer.save();
+
+    // Update task actualHours
+    const task = await Task.findById(timer.taskId);
+    if (task) {
+        const totalDuration = await TimeEntry.aggregate([
+            { $match: { taskId: mongoose.Types.ObjectId(timer.taskId) } },
+            { $group: { _id: null, totalMinutes: { $sum: "$duration" } } }
+        ]);
+        task.actualHours = totalDuration.length > 0 ? (totalDuration[0].totalMinutes / 60).toFixed(2) : 0;
+        await task.save();
+    }
+
+    res.status(200).json(new ApiResponse(200, timer, "Time tracking stopped successfully"));
+});
+
+// @desc    Update time entry (for manual entries or stopped timers)
+// @route   PUT /api/time-entries/:id
+// @access  Private
+const updateTimeEntry = asyncHandler(async (req, res) => {
+    const timeEntryId = req.params.id;
+    const updates = req.body;
+
+    const timeEntry = await TimeEntry.findOne({ _id: timeEntryId, userId: req.user.id });
+
+    if (!timeEntry) {
+        throw new ApiError(404, "Time entry not found or access denied");
+    }
+
+    if (timeEntry.isRunning) {
+        throw new ApiError(400, "Cannot update a running timer. Stop it first.");
+    }
+
+    // Prevent updating certain fields
+    delete updates.taskId;
+    delete updates.userId;
+    delete updates.createdAt;
+    delete updates.updatedAt;
+    delete updates.isRunning;
+
+    Object.assign(timeEntry, updates);
+    // Recalculate duration if start/end times changed
+    if (updates.startTime || updates.endTime) {
+        timeEntry.duration = Math.round((timeEntry.endTime.getTime() - timeEntry.startTime.getTime()) / (1000 * 60));
+    }
+
+    await timeEntry.save();
+
+    // Update task actualHours
+    const task = await Task.findById(timeEntry.taskId);
+    if (task) {
+        const totalDuration = await TimeEntry.aggregate([
+            { $match: { taskId: mongoose.Types.ObjectId(timeEntry.taskId) } },
+            { $group: { _id: null, totalMinutes: { $sum: "$duration" } } }
+        ]);
+        task.actualHours = totalDuration.length > 0 ? (totalDuration[0].totalMinutes / 60).toFixed(2) : 0;
+        await task.save();
+    }
+
+    res.status(200).json(new ApiResponse(200, timeEntry, "Time entry updated successfully"));
+});
+
+// @desc    Delete time entry
+// @route   DELETE /api/time-entries/:id
+// @access  Private
+const deleteTimeEntry = asyncHandler(async (req, res) => {
+    const timeEntryId = req.params.id;
+
+    const timeEntry = await TimeEntry.findOne({ _id: timeEntryId, userId: req.user.id });
+
+    if (!timeEntry) {
+        throw new ApiError(404, "Time entry not found or access denied");
+    }
+
+    if (timeEntry.isRunning) {
+        throw new ApiError(400, "Cannot delete a running timer. Stop it first.");
+    }
+
+    const taskId = timeEntry.taskId;
+    await TimeEntry.deleteOne({ _id: timeEntryId });
+
+    // Update task actualHours
+    const task = await Task.findById(taskId);
+    if (task) {
+        const totalDuration = await TimeEntry.aggregate([
+            { $match: { taskId: mongoose.Types.ObjectId(taskId) } },
+            { $group: { _id: null, totalMinutes: { $sum: "$duration" } } }
+        ]);
+        task.actualHours = totalDuration.length > 0 ? (totalDuration[0].totalMinutes / 60).toFixed(2) : 0;
+        await task.save();
+    }
+
+    res.status(200).json(new ApiResponse(200, {}, "Time entry deleted successfully"));
+});
+
+
+module.exports = {
+    getProjectTasks,
+    getTaskById,
+    createTask,
+    updateTask,
+    deleteTask,
+    getTaskDependencies,
+    addTaskDependency,
+    removeTaskDependency,
+    getTaskComments,
+    addTaskComment,
+    getTaskAttachments,
+    addTaskAttachment,
+    removeTaskAttachment,
+    getTaskTimeEntries,
+    addTimeEntry,
+    startTimeTracking,
+    stopTimeTracking,
+    updateTimeEntry,
+    deleteTimeEntry,
+    // Add controllers for getting statuses/priorities/dependency-types if needed
 };
 
-// Stop time tracking
-exports.stopTimeTracking = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    const { notes } = req.body;
-    
-    // Find task
-    const task = await Task.findOne({
-      _id: taskId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!task) {
-      return next(createError(404, 'Task not found'));
-    }
-    
-    // Find active time tracking session
-    const sessionIndex = task.timeTracking.findIndex(
-      session => session.user.toString() === req.user._id.toString() && !session.endTime
-    );
-    
-    if (sessionIndex === -1) {
-      return next(createError(404, 'No active time tracking session found'));
-    }
-    
-    // Update session
-    const endTime = new Date();
-    const startTime = task.timeTracking[sessionIndex].startTime;
-    const durationMinutes = Math.round((endTime - startTime) / (1000 * 60));
-    
-    task.timeTracking[sessionIndex].endTime = endTime;
-    task.timeTracking[sessionIndex].duration = durationMinutes;
-    
-    if (notes) {
-      task.timeTracking[sessionIndex].notes = notes;
-    }
-    
-    // Update task actual hours
-    const totalMinutes = task.timeTracking.reduce((total, session) => {
-      return total + (session.duration || 0);
-    }, 0);
-    
-    task.actualHours = Math.round(totalMinutes / 60 * 100) / 100; // Round to 2 decimal places
-    
-    await task.save();
-    
-    res.status(200).json({
-      success: true,
-      timeTracking: task.timeTracking[sessionIndex],
-      actualHours: task.actualHours
-    });
-  } catch (error) {
-    next(createError(500, 'Error stopping time tracking: ' + error.message));
-  }
-};
-
-// Get task time tracking
-exports.getTaskTimeTracking = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    
-    // Find task
-    const task = await Task.findOne({
-      _id: taskId,
-      company: req.user.company,
-      isActive: true
-    }).populate('timeTracking.user', 'firstName lastName email');
-    
-    if (!task) {
-      return next(createError(404, 'Task not found'));
-    }
-    
-    // Calculate summary statistics
-    const totalMinutes = task.timeTracking.reduce((total, session) => {
-      return total + (session.duration || 0);
-    }, 0);
-    
-    const userSummary = {};
-    task.timeTracking.forEach(session => {
-      if (session.duration) {
-        const userId = session.user._id.toString();
-        if (!userSummary[userId]) {
-          userSummary[userId] = {
-            user: {
-              _id: session.user._id,
-              firstName: session.user.firstName,
-              lastName: session.user.lastName,
-              email: session.user.email
-            },
-            totalMinutes: 0,
-            sessionCount: 0
-          };
-        }
-        userSummary[userId].totalMinutes += session.duration;
-        userSummary[userId].sessionCount += 1;
-      }
-    });
-    
-    res.status(200).json({
-      success: true,
-      timeTracking: task.timeTracking,
-      summary: {
-        totalMinutes,
-        totalHours: Math.round(totalMinutes / 60 * 100) / 100,
-        userSummary: Object.values(userSummary)
-      }
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching time tracking: ' + error.message));
-  }
-};
-
-// Add task attachment
-exports.addTaskAttachment = async (req, res, next) => {
-  try {
-    const { taskId } = req.params;
-    const { name, fileUrl, fileType } = req.body;
-    
-    if (!name || !fileUrl || !fileType) {
-      return next(createError(400, 'Name, fileUrl, and fileType are required'));
-    }
-    
-    // Find task
-    const task = await Task.findOne({
-      _id: taskId,
-      company: req.user.company,
-      isActive: true
-    });
-    
-    if (!task) {
-      return next(createError(404, 'Task not found'));
-    }
-    
-    // Add attachment
-    task.attachments.push({
-      name,
-      fileUrl,
-      fileType,
-      uploadedBy: req.user._id,
-      uploadedAt: new Date()
-    });
-    
-    await task.save();
-    
-    // Get the newly added attachment
-    const newAttachment = task.attachments[task.attachments.length - 1];
-    
-    // Populate user information
-    await task.populate('attachments.uploadedBy', 'firstName lastName email');
-    
-    res.status(201).json({
-      success: true,
-      attachment: task.attachments.id(newAttachment._id)
-    });
-  } catch (error) {
-    next(createError(500, 'Error adding attachment: ' + error.message));
-  }
-};
-
-// Get tasks assigned to current user
-exports.getMyTasks = async (req, res, next) => {
-  try {
-    const { status, priority, projectId, search, sort, limit = 50, page = 1 } = req.query;
-    
-    // Build query
-    const query = { 
-      assignedTo: req.user._id,
-      company: req.user.company,
-      isActive: true
-    };
-    
-    // Filter by status if provided
-    if (status) {
-      query.status = status;
-    }
-    
-    // Filter by priority if provided
-    if (priority) {
-      query.priority = priority;
-    }
-    
-    // Filter by project if provided
-    if (projectId) {
-      query.project = projectId;
-    }
-    
-    // Search by title or description
-    if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    // Build sort options
-    let sortOptions = { dueDate: 1 }; // Default sort by due date (ascending)
-    if (sort) {
-      const [field, order] = sort.split(':');
-      sortOptions = { [field]: order === 'desc' ? -1 : 1 };
-    }
-    
-    // Calculate pagination
-    const skip = (page - 1) * limit;
-    
-    // Execute query with pagination
-    const tasks = await Task.find(query)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('project', 'name')
-      .populate('createdBy', 'firstName lastName email');
-    
-    // Get total count for pagination
-    const totalTasks = await Task.countDocuments(query);
-    
-    res.status(200).json({
-      success: true,
-      count: tasks.length,
-      totalPages: Math.ceil(totalTasks / limit),
-      currentPage: parseInt(page),
-      tasks
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching tasks: ' + error.message));
-  }
-};
-
-// Get task analytics
-exports.getTaskAnalytics = async (req, res, next) => {
-  try {
-    const { projectId } = req.params;
-    
-    // Check if project exists and belongs to user's company
-    const project = await Project.findOne({
-      _id: projectId,
-      company: req.user.company
-    });
-    
-    if (!project) {
-      return next(createError(404, 'Project not found'));
-    }
-    
-    // Get task status counts
-    const statusCounts = await Task.aggregate([
-      { 
-        $match: { 
-          project: mongoose.Types.ObjectId(projectId),
-          isActive: true
-        } 
-      },
-      { 
-        $group: { 
-          _id: '$status', 
-          count: { $sum: 1 } 
-        } 
-      }
-    ]);
-    
-    // Get task priority counts
-    const priorityCounts = await Task.aggregate([
-      { 
-        $match: { 
-          project: mongoose.Types.ObjectId(projectId),
-          isActive: true
-        } 
-      },
-      { 
-        $group: { 
-          _id: '$priority', 
-          count: { $sum: 1 } 
-        } 
-      }
-    ]);
-    
-    // Get task completion trend (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const completionTrend = await Task.aggregate([
-      { 
-        $match: { 
-          project: mongoose.Types.ObjectId(projectId),
-          isActive: true,
-          completedDate: { $gte: thirtyDaysAgo }
-        } 
-      },
-      {
-        $group: {
-          _id: { 
-            $dateToString: { 
-              format: '%Y-%m-%d', 
-              date: '$completedDate' 
-            } 
-          },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-    
-    // Get user performance
-    const userPerformance = await Task.aggregate([
-      { 
-        $match: { 
-          project: mongoose.Types.ObjectId(projectId),
-          isActive: true,
-          assignedTo: { $ne: null }
-        } 
-      },
-      {
-        $group: {
-          _id: '$assignedTo',
-          totalTasks: { $sum: 1 },
-          completedTasks: { 
-            $sum: { 
-              $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] 
-            } 
-          },
-          totalTime: { 
-            $sum: { 
-              $reduce: { 
-                input: '$timeTracking',
-                initialValue: 0,
-                in: { $add: ['$$value', '$$this.duration'] }
-              } 
-            } 
-          }
-        }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'user'
-        }
-      },
-      {
-        $unwind: '$user'
-      },
-      {
-        $project: {
-          _id: 1,
-          user: {
-            _id: '$user._id',
-            firstName: '$user.firstName',
-            lastName: '$user.lastName',
-            email: '$user.email'
-          },
-          totalTasks: 1,
-          completedTasks: 1,
-          completionRate: { 
-            $multiply: [
-              { $divide: ['$completedTasks', '$totalTasks'] },
-              100
-            ]
-          },
-          totalTimeMinutes: '$totalTime',
-          totalTimeHours: { $divide: ['$totalTime', 60] }
-        }
-      }
-    ]);
-    
-    res.status(200).json({
-      success: true,
-      analytics: {
-        statusCounts: statusCounts.reduce((obj, item) => {
-          obj[item._id] = item.count;
-          return obj;
-        }, {}),
-        priorityCounts: priorityCounts.reduce((obj, item) => {
-          obj[item._id] = item.count;
-          return obj;
-        }, {}),
-        completionTrend,
-        userPerformance
-      }
-    });
-  } catch (error) {
-    next(createError(500, 'Error fetching task analytics: ' + error.message));
-  }
-};

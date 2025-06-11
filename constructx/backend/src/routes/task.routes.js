@@ -1,45 +1,97 @@
-const express = require('express');
+const express = require("express");
+const {
+    getProjectTasks,
+    getTaskById,
+    createTask,
+    updateTask,
+    deleteTask,
+    getTaskDependencies,
+    addTaskDependency,
+    removeTaskDependency,
+    getTaskComments,
+    addTaskComment,
+    getTaskAttachments,
+    addTaskAttachment,
+    removeTaskAttachment,
+    getTaskTimeEntries,
+    addTimeEntry,
+    startTimeTracking,
+    stopTimeTracking,
+    updateTimeEntry,
+    deleteTimeEntry,
+    // Import controllers for getting statuses/priorities/dependency-types if needed
+} = require("../controllers/task.controller");
+const { protect } = require("../middleware/auth");
+// Import file upload middleware (e.g., multer) if needed for attachments
+// const upload = require("../middleware/upload"); // Example
+
 const router = express.Router();
-const taskController = require('../controllers/task.controller');
-const { authMiddleware } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(authMiddleware);
+// Apply protect middleware to all routes in this file
+router.use(protect);
 
-// Create a new task
-router.post('/', taskController.createTask);
+// --- Task Routes ---
+// Note: Task creation is nested under projects, but retrieval/update/delete use direct task ID
+router.route("/projects/:projectId/tasks")
+    .get(getProjectTasks)
+    .post(createTask);
 
-// Get all tasks for a project
-router.get('/project/:projectId', taskController.getProjectTasks);
+router.route("/tasks/:id")
+    .get(getTaskById)
+    .put(updateTask)
+    .delete(deleteTask);
 
-// Get task by ID
-router.get('/:taskId', taskController.getTaskById);
+// --- Task Dependency Routes ---
+router.route("/tasks/:taskId/dependencies")
+    .get(getTaskDependencies)
+    .post(addTaskDependency);
 
-// Update task
-router.put('/:taskId', taskController.updateTask);
+// Route for deleting a specific dependency by its ID
+router.route("/tasks/dependencies/:id")
+    .delete(removeTaskDependency);
 
-// Delete task
-router.delete('/:taskId', taskController.deleteTask);
+// --- Task Comment Routes ---
+router.route("/tasks/:taskId/comments")
+    .get(getTaskComments)
+    .post(addTaskComment);
 
-// Add comment to task
-router.post('/:taskId/comments', taskController.addTaskComment);
+// Routes for updating/deleting specific comments (implement controllers if needed)
+// router.route("/tasks/comments/:id")
+//     .put(updateTaskComment)
+//     .delete(deleteTaskComment);
 
-// Start time tracking
-router.post('/:taskId/time-tracking/start', taskController.startTimeTracking);
+// --- Task Attachment Routes ---
+router.route("/tasks/:taskId/attachments")
+    .get(getTaskAttachments)
+    // Apply upload middleware here if needed
+    // .post(upload.single("attachmentFile"), addTaskAttachment);
+    .post(addTaskAttachment); // Assuming upload handled elsewhere or simple path storage
 
-// Stop time tracking
-router.post('/:taskId/time-tracking/stop', taskController.stopTimeTracking);
+// Route for downloading/deleting specific attachments
+router.route("/tasks/attachments/:id")
+    // .get(downloadTaskAttachment) // Controller needed for download logic
+    .delete(removeTaskAttachment);
 
-// Get task time tracking
-router.get('/:taskId/time-tracking', taskController.getTaskTimeTracking);
+// --- Time Entry Routes ---
+router.route("/tasks/:taskId/time-entries")
+    .get(getTaskTimeEntries)
+    .post(addTimeEntry); // For manual time entry
 
-// Add task attachment
-router.post('/:taskId/attachments', taskController.addTaskAttachment);
+router.route("/tasks/:taskId/time-entries/start")
+    .post(startTimeTracking);
 
-// Get tasks assigned to current user
-router.get('/my-tasks', taskController.getMyTasks);
+// Routes for specific time entries (update, delete, stop)
+router.route("/time-entries/:id")
+    .put(updateTimeEntry)
+    .delete(deleteTimeEntry);
 
-// Get task analytics
-router.get('/analytics/project/:projectId', taskController.getTaskAnalytics);
+router.route("/time-entries/:id/stop")
+    .put(stopTimeTracking);
+
+// Placeholder routes for fetching enums/types (implement controllers if needed)
+// router.get("/tasks/statuses", getTaskStatuses);
+// router.get("/tasks/priorities", getTaskPriorities);
+// router.get("/tasks/dependency-types", getDependencyTypes);
 
 module.exports = router;
+

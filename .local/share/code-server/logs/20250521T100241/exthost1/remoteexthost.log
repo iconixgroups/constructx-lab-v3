@@ -13,3 +13,6 @@
 2025-05-21 06:04:14.801 [info] ExtensionService#_doActivateExtension vscode.markdown-math, startup: false, activationEvent: 'api', root cause: vscode.markdown-language-features
 2025-05-22 02:50:41.630 [error] Error: read ETIMEDOUT
 	at TCP.onStreamRead (node:internal/stream_base_commons:218:20)
+2025-05-22 03:51:57.509 [info] Extension host terminating: renderer disconnected for too long (2)
+2025-05-22 03:51:57.511 [info] Lock '/home/ubuntu/.local/share/code-server/User/workspaceStorage/2f135562/vscode.lock': Marking the lockfile as scheduled to be released in 6000 ms.
+2025-05-22 03:51:57.568 [info] Extension host with pid 9056 exiting with code 0

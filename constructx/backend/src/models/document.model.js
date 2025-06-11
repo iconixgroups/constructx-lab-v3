@@ -1,166 +1,103 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const documentSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  description: {
-    type: String,
-    trim: true
-  },
-  project: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Project',
-    required: true
-  },
-  company: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Company',
-    required: true
-  },
-  category: {
-    type: String,
-    enum: [
-      'contract', 
-      'drawing', 
-      'specification', 
-      'submittal', 
-      'rfi', 
-      'change_order', 
-      'meeting_minutes', 
-      'schedule', 
-      'budget', 
-      'invoice', 
-      'permit', 
-      'safety', 
-      'quality', 
-      'photo', 
-      'other'
-    ],
-    default: 'other'
-  },
-  tags: [String],
-  file: {
-    fileName: {
-      type: String,
-      required: true
+    projectId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Project",
+        required: true,
     },
-    fileUrl: {
-      type: String,
-      required: true
+    folderId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Folder",
+        required: false, // null if in project root
     },
-    fileType: {
-      type: String,
-      required: true
+    name: {
+        type: String,
+        required: true,
+        trim: true,
+    },
+    description: {
+        type: String,
+        trim: true,
     },
     fileSize: {
-      type: Number, // in bytes
-      required: true
+        type: Number, // Size in bytes of the latest version
+        required: true,
     },
-    thumbnailUrl: String
-  },
-  version: {
-    number: {
-      type: Number,
-      default: 1
+    fileType: {
+        type: String, // MIME type of the latest version
+        required: true,
+        trim: true,
     },
-    history: [{
-      number: Number,
-      fileUrl: String,
-      updatedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-      },
-      updatedAt: {
-        type: Date,
-        default: Date.now
-      },
-      changeNotes: String
-    }]
-  },
-  uploadedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  approvalStatus: {
+    filePath: {
+        type: String, // Storage path of the latest version
+        required: true,
+    },
     status: {
-      type: String,
-      enum: ['pending', 'approved', 'rejected', 'not_required'],
-      default: 'not_required'
-    },
-    approvers: [{
-      user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-      },
-      status: {
         type: String,
-        enum: ['pending', 'approved', 'rejected'],
-        default: 'pending'
-      },
-      comments: String,
-      actionDate: Date
-    }]
-  },
-  permissions: {
-    viewableBy: {
-      type: String,
-      enum: ['all', 'team', 'specific_users'],
-      default: 'team'
+        required: true,
+        enum: ["Draft", "Under Review", "Approved", "Rejected", "Archived"],
+        default: "Draft",
     },
-    specificUsers: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    }]
-  },
-  comments: [{
-    text: {
-      type: String,
-      required: true
+    category: {
+        type: String,
+        trim: true,
     },
-    author: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
+    tags: [{
+        type: String,
+        trim: true,
+    }],
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
     },
-    createdAt: {
-      type: Date,
-      default: Date.now
+    latestVersionNumber: { // Track the latest version number
+        type: Number,
+        default: 1,
     },
-    updatedAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  metadata: {
-    type: Map,
-    of: mongoose.Schema.Types.Mixed
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+    metadata: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {},
+    },
+    isDeleted: { // For soft delete
+        type: Boolean,
+        default: false,
+    },
+    deletedAt: {
+        type: Date,
+    },
 }, {
-  timestamps: true
+    timestamps: true,
 });
 
-// Indexes for faster queries
-documentSchema.index({ project: 1, category: 1 });
-documentSchema.index({ company: 1 });
-documentSchema.index({ 'file.fileName': 'text', title: 'text', description: 'text' });
+// Indexes
+documentSchema.index({ projectId: 1, folderId: 1, name: 1 });
+documentSchema.index({ projectId: 1, status: 1 });
+documentSchema.index({ projectId: 1, category: 1 });
 documentSchema.index({ tags: 1 });
 
-const Document = mongoose.model('Document', documentSchema);
+// Ensure document name is unique within the same folder and project (for non-deleted docs)
+documentSchema.index({ projectId: 1, folderId: 1, name: 1, isDeleted: 1 }, { unique: true, partialFilterExpression: { isDeleted: false } });
+
+// Filter out soft-deleted documents by default
+documentSchema.pre(/^find/, function(next) {
+    if (this.getOptions().includeDeleted !== true) {
+        this.where({ isDeleted: { $ne: true } });
+    }
+    next();
+});
+
+// Virtual to get the latest version (can be implemented if needed)
+// documentSchema.virtual("latestVersion", {
+//     ref: "DocumentVersion",
+//     localField: "_id",
+//     foreignField: "documentId",
+//     justOne: true,
+//     options: { sort: { versionNumber: -1 } }
+// });
+
+const Document = mongoose.model("Document", documentSchema);
 
 module.exports = Document;
+

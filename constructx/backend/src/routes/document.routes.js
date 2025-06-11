@@ -1,39 +1,108 @@
-const express = require('express');
+const express = require("express");
+const {
+    getProjectFolders,
+    createFolder,
+    updateFolder,
+    deleteFolder,
+    getDocuments,
+    getDocumentById,
+    uploadDocument,
+    updateDocumentMetadata,
+    deleteDocument,
+    downloadDocument,
+    getDocumentVersions,
+    uploadNewVersion,
+    downloadVersion,
+    getDocumentComments,
+    addDocumentComment,
+    getDocumentApprovals,
+    requestDocumentApproval,
+    respondToApproval,
+    // Import controllers for comments update/delete, approval cancel, access control if implemented
+} = require("../controllers/document.controller");
+const { protect } = require("../middleware/auth");
+// Import file upload middleware (e.g., multer) if needed
+// const upload = require("../middleware/upload"); // Example
+
 const router = express.Router();
-const documentController = require('../controllers/document.controller');
-const { authMiddleware } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(authMiddleware);
+// Apply protect middleware to all routes in this file
+router.use(protect);
 
-// Upload a new document
-router.post('/', documentController.uploadDocument);
+// --- Folder Routes ---
+router.route("/projects/:projectId/folders")
+    .get(getProjectFolders) // Handles root folders (no parentFolderId query) and subfolders (with parentFolderId query)
+    .post(createFolder); // Creates root folder
 
-// Get all documents for a project
-router.get('/project/:projectId', documentController.getProjectDocuments);
+// Note: Creating subfolders might use POST /api/folders/:parentId/folders or POST /api/projects/:projectId/folders with parentFolderId in body
+// The current controller uses the latter approach.
 
-// Get document by ID
-router.get('/:documentId', documentController.getDocumentById);
+router.route("/folders/:id")
+    // .get(getFolderById) // Controller not implemented, add if needed
+    .put(updateFolder)
+    .delete(deleteFolder);
+// router.route("/folders/:id/documents").get(getDocumentsInFolder); // Controller not implemented, handled by GET /documents?folderId=
+// router.route("/folders/:id/subfolders").get(getSubfolders); // Controller not implemented, handled by GET /folders?parentFolderId=
 
-// Update document metadata
-router.put('/:documentId', documentController.updateDocument);
+// --- Document Routes ---
+router.route("/projects/:projectId/documents")
+    .get(getDocuments) // Handles root documents (no folderId query) and folder documents (with folderId query)
+    // Apply upload middleware here if needed
+    // .post(upload.single("documentFile"), uploadDocument);
+    .post(uploadDocument);
 
-// Upload new version of document
-router.post('/:documentId/versions', documentController.uploadNewVersion);
+router.route("/documents/:id")
+    .get(getDocumentById)
+    .put(updateDocumentMetadata)
+    .delete(deleteDocument);
 
-// Delete document
-router.delete('/:documentId', documentController.deleteDocument);
+router.route("/documents/:id/download")
+    .get(downloadDocument);
+// router.route("/documents/:id/preview").get(getDocumentPreview); // Controller not implemented
 
-// Add comment to document
-router.post('/:documentId/comments', documentController.addDocumentComment);
+// --- Document Version Routes ---
+router.route("/documents/:documentId/versions")
+    .get(getDocumentVersions)
+    // Apply upload middleware here if needed
+    // .post(upload.single("versionFile"), uploadNewVersion);
+    .post(uploadNewVersion);
 
-// Approve or reject document
-router.post('/:documentId/review', documentController.reviewDocument);
+router.route("/documents/versions/:id/download")
+    .get(downloadVersion);
+// router.route("/documents/versions/:id/preview").get(getVersionPreview); // Controller not implemented
+// router.route("/documents/:documentId/versions/:id/restore").put(restoreVersion); // Controller not implemented
 
-// Get document categories and counts
-router.get('/categories/project/:projectId', documentController.getDocumentCategoryCounts);
+// --- Document Comment Routes ---
+router.route("/documents/:documentId/comments")
+    .get(getDocumentComments)
+    .post(addDocumentComment);
 
-// Get document version history
-router.get('/:documentId/versions', documentController.getDocumentVersionHistory);
+// Routes for updating/deleting specific comments (implement controllers if needed)
+// router.route("/documents/comments/:id")
+//     .put(updateDocumentComment)
+//     .delete(deleteDocumentComment);
+
+// --- Document Approval Routes ---
+router.route("/documents/:documentId/approvals")
+    .get(getDocumentApprovals) // Requires versionId query param
+    .post(requestDocumentApproval);
+
+router.route("/documents/approvals/:id")
+    .put(respondToApproval);
+//     .delete(cancelApprovalRequest); // Controller not implemented
+// router.route("/documents/approvals/pending").get(getMyPendingApprovals); // Controller not implemented
+
+// --- Document Access Routes (implement controllers if needed) ---
+// router.route("/documents/:documentId/access")
+//     .get(getDocumentAccess)
+//     .post(grantDocumentAccess);
+// router.route("/documents/access/:id")
+//     .put(updateDocumentAccess)
+//     .delete(revokeDocumentAccess);
+
+// Placeholder routes for fetching enums/types (implement controllers if needed)
+// router.get("/documents/categories", getDocumentCategories);
+// router.get("/documents/statuses", getDocumentStatuses);
 
 module.exports = router;
+

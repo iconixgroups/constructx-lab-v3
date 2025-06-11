@@ -1,167 +1,114 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const taskSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  description: {
-    type: String,
-    trim: true
-  },
-  project: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Project',
-    required: true
-  },
-  company: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Company',
-    required: true
-  },
-  status: {
-    type: String,
-    enum: ['backlog', 'todo', 'in_progress', 'review', 'completed', 'blocked'],
-    default: 'todo'
-  },
-  priority: {
-    type: String,
-    enum: ['low', 'medium', 'high', 'urgent'],
-    default: 'medium'
-  },
-  assignedTo: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  dueDate: {
-    type: Date
-  },
-  startDate: {
-    type: Date
-  },
-  completedDate: {
-    type: Date
-  },
-  estimatedHours: {
-    type: Number
-  },
-  actualHours: {
-    type: Number
-  },
-  tags: [String],
-  attachments: [{
-    name: String,
-    fileUrl: String,
-    fileType: String,
-    uploadedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+    projectId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Project",
+        required: true,
     },
-    uploadedAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  comments: [{
-    text: {
-      type: String,
-      required: true
+    phaseId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "ProjectPhase",
+        required: false,
     },
-    author: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
+    parentTaskId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Task",
+        required: false,
     },
-    createdAt: {
-      type: Date,
-      default: Date.now
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now
-    },
-    attachments: [{
-      name: String,
-      fileUrl: String,
-      fileType: String
-    }]
-  }],
-  subtasks: [{
     title: {
-      type: String,
-      required: true
+        type: String,
+        required: true,
+        trim: true,
     },
-    isCompleted: {
-      type: Boolean,
-      default: false
+    description: {
+        type: String,
+        trim: true,
+    },
+    status: {
+        type: String,
+        required: true,
+        enum: ["Not Started", "In Progress", "On Hold", "Completed", "Cancelled"],
+        default: "Not Started",
+    },
+    priority: {
+        type: String,
+        required: true,
+        enum: ["Low", "Medium", "High", "Critical"],
+        default: "Medium",
     },
     assignedTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
     },
-    completedAt: {
-      type: Date
-    }
-  }],
-  dependencies: [{
-    task: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Task'
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
     },
-    type: {
-      type: String,
-      enum: ['finish_to_start', 'start_to_start', 'finish_to_finish', 'start_to_finish'],
-      default: 'finish_to_start'
-    }
-  }],
-  timeTracking: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+    startDate: {
+        type: Date,
+        required: true,
     },
-    startTime: {
-      type: Date
+    dueDate: {
+        type: Date,
+        required: true,
     },
-    endTime: {
-      type: Date
+    completedDate: {
+        type: Date,
     },
-    duration: {
-      type: Number // in minutes
+    estimatedHours: {
+        type: Number,
+        default: 0,
     },
-    notes: String
-  }],
-  customFields: {
-    type: Map,
-    of: mongoose.Schema.Types.Mixed
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+    actualHours: {
+        type: Number,
+        default: 0,
+    },
+    completionPercentage: {
+        type: Number,
+        min: 0,
+        max: 100,
+        default: 0,
+    },
+    tags: [{
+        type: String,
+        trim: true,
+    }],
+    isDeleted: { // For soft delete
+        type: Boolean,
+        default: false,
+    },
+    deletedAt: {
+        type: Date,
+    },
 }, {
-  timestamps: true
+    timestamps: true,
 });
 
-// Indexes for faster queries
-taskSchema.index({ project: 1, status: 1 });
+// Indexes
+taskSchema.index({ projectId: 1, status: 1 });
 taskSchema.index({ assignedTo: 1 });
+taskSchema.index({ parentTaskId: 1 });
 taskSchema.index({ dueDate: 1 });
-taskSchema.index({ company: 1 });
 
-const Task = mongoose.model('Task', taskSchema);
+// Filter out soft-deleted documents by default
+taskSchema.pre(/^find/, function(next) {
+    if (this.getOptions().includeDeleted !== true) {
+        this.where({ isDeleted: { $ne: true } });
+    }
+    next();
+});
+
+// Method to calculate actualHours from time entries (can be added later if needed)
+// taskSchema.methods.calculateActualHours = async function() {
+//     const timeEntries = await mongoose.model("TimeEntry").find({ taskId: this._id });
+//     this.actualHours = timeEntries.reduce((sum, entry) => sum + (entry.duration / 60), 0); // Assuming duration is in minutes
+//     await this.save();
+// };
+
+const Task = mongoose.model("Task", taskSchema);
 
 module.exports = Task;
+

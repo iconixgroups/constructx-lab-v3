@@ -1,42 +1,57 @@
-const express = require('express');
+const express = require("express");
+const {
+    getDashboards,
+    getDashboardById,
+    createDashboard,
+    updateDashboard,
+    deleteDashboard,
+    setDefaultDashboard,
+    getWidgets,
+    getWidgetById,
+    addWidget,
+    updateWidget,
+    removeWidget,
+    getWidgetData,
+} = require("../controllers/dashboard.controller");
+const { protect } = require("../middleware/auth"); // Assuming protect middleware handles authentication
+
 const router = express.Router();
-const dashboardController = require('../controllers/dashboard.controller');
-const { authMiddleware } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(authMiddleware);
+// Apply protect middleware to all routes in this file
+router.use(protect);
 
-// Create a new dashboard
-router.post('/', dashboardController.createDashboard);
+// Dashboard Configuration Routes
+router.route("/")
+    .get(getDashboards)
+    .post(createDashboard);
 
-// Get all dashboards for a project
-router.get('/project/:projectId', dashboardController.getProjectDashboards);
+router.route("/:id")
+    .get(getDashboardById)
+    .put(updateDashboard)
+    .delete(deleteDashboard);
 
-// Get dashboard by ID
-router.get('/:dashboardId', dashboardController.getDashboardById);
+router.route("/:id/default")
+    .put(setDefaultDashboard);
 
-// Update dashboard
-router.put('/:dashboardId', dashboardController.updateDashboard);
+// Widget Routes (nested under dashboards for creation, direct for updates/deletes)
+router.route("/:dashboardId/widgets")
+    .get(getWidgets)
+    .post(addWidget);
 
-// Delete dashboard
-router.delete('/:dashboardId', dashboardController.deleteDashboard);
+// Routes for individual widgets (assuming widget ID is unique across all dashboards)
+router.route("/widgets/:id")
+    .get(getWidgetById)
+    .put(updateWidget)
+    .delete(removeWidget);
 
-// Share dashboard with users
-router.post('/:dashboardId/share', dashboardController.shareDashboard);
+router.route("/widgets/:id/data")
+    .get(getWidgetData);
 
-// Remove dashboard share
-router.delete('/:dashboardId/share/:userId', dashboardController.removeDashboardShare);
-
-// Get dashboard widget data
-router.get('/:dashboardId/widgets/:widgetId/data', dashboardController.getDashboardWidgetData);
-
-// Add widget to dashboard
-router.post('/:dashboardId/widgets', dashboardController.addDashboardWidget);
-
-// Update dashboard widget
-router.put('/:dashboardId/widgets/:widgetId', dashboardController.updateDashboardWidget);
-
-// Remove dashboard widget
-router.delete('/:dashboardId/widgets/:widgetId', dashboardController.removeDashboardWidget);
+// Note: Routes like /api/widgets/types and /api/widgets/data-sources might be handled
+// in a separate controller/route file or within these controllers if simple.
+// Example placeholder route (implementation needed in controller):
+// router.get("/widgets/types", getWidgetTypes);
+// router.get("/widgets/data-sources", getWidgetDataSources);
 
 module.exports = router;
+

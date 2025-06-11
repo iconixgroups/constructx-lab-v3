@@ -22,3 +22,21 @@
 2025-05-22 02:57:03.475 [info] ExtensionService#_doActivateExtension vscode.json-language-features, startup: false, activationEvent: 'onLanguage:json'
 2025-05-22 03:00:09.139 [warning] [Decorations] CAPPING events from decorations provider vscode.git 10003
 2025-05-22 03:00:20.398 [warning] [Decorations] CAPPING events from decorations provider vscode.git 10000
+2025-05-22 03:03:18.526 [warning] [Decorations] CAPPING events from decorations provider vscode.git 10001
+2025-05-24 10:56:48.760 [error] Error: read ETIMEDOUT
+	at TCP.onStreamRead (node:internal/stream_base_commons:218:20)
+2025-05-26 05:36:58.633 [info] Extension host terminating: renderer disconnected for too long (2)
+2025-05-26 05:36:58.634 [info] Lock '/home/ubuntu/.local/share/code-server/User/workspaceStorage/2f135562-1/vscode.lock': Marking the lockfile as scheduled to be released in 6000 ms.
+2025-05-26 05:36:58.695 [error] ProxyResolver#resolveProxy undefined Canceled: Canceled
+	at al (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:7:1218)
+	at file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:29:117068
+	at Array.forEach (<anonymous>)
+	at f5.dispose (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:29:117008)
+	at TJ.terminate (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:123:10082)
+	at v2.terminate (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:124:1434)
+	at hs (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:225:5703)
+	at mx.a (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:225:2614)
+	at mx.h (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:28:75572)
+	at listOnTimeout (node:internal/timers:581:17)
+	at process.processTimers (node:internal/timers:519:7) 
+2025-05-26 05:36:58.787 [info] Extension host with pid 22696 exiting with code 0
