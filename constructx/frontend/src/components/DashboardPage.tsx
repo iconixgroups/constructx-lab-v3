@@ -1,206 +1,180 @@
-import React, { useState, useEffect } from "react";
-import { Button } from "./ui/button"; // Assuming Shadcn UI Button
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"; // Assuming Shadcn UI Select
-import { Responsive, WidthProvider } from "react-grid-layout";
-import "/node_modules/react-grid-layout/css/styles.css";
-import "/node_modules/react-resizable/css/styles.css";
-import WidgetComponent from "./WidgetComponent"; // Import the generic widget component
-import WidgetLibrary from "./WidgetLibrary"; // Import the widget library modal
-// Import API functions (replace with actual API calls)
-// import { getUserDashboards, getDashboardConfig, updateDashboardLayout, addWidgetToDashboard } from "../services/api";
+import React, { useState, useEffect } from 'react';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Plus, Settings, LayoutDashboard, Search, Filter, RefreshCw } from 'lucide-react';
+import { useToast } from './ui/use-toast';
+import dashboardService from '../services/dashboardService';
 
-const ResponsiveGridLayout = WidthProvider(Responsive);
+interface DashboardPageProps {
+  projectId?: string; // Optional - if provided, shows project-specific dashboard
+}
 
-const DashboardPage = () => {
-    const [dashboards, setDashboards] = useState([]); // List of user dashboards
-    const [currentDashboardId, setCurrentDashboardId] = useState(null);
-    const [currentDashboard, setCurrentDashboard] = useState(null); // Full config of the current dashboard
-    const [layout, setLayout] = useState([]); // Layout for react-grid-layout
-    const [widgets, setWidgets] = useState([]); // Widget configurations for the current dashboard
-    const [isEditMode, setIsEditMode] = useState(false);
-    const [isWidgetLibraryOpen, setIsWidgetLibraryOpen] = useState(false);
+const DashboardPage: React.FC<DashboardPageProps> = ({ projectId }) => {
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [dashboards, setDashboards] = useState<any[]>([]);
+  const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null);
+  const [widgets, setWidgets] = useState<any[]>([]);
 
-    // Fetch dashboards on mount
-    useEffect(() => {
-        // Replace with actual API call
-        // getUserDashboards().then(data => {
-        //     setDashboards(data);
-        //     // Select default or first dashboard
-        //     const defaultDashboard = data.find(d => d.isDefault) || data[0];
-        //     if (defaultDashboard) {
-        //         setCurrentDashboardId(defaultDashboard.id);
-        //     }
-        // });
-        // Mock data for now
-        const mockDashboards = [
-            { id: "dash1", name: "Default Dashboard", isDefault: true },
-            { id: "dash2", name: "Project Overview", isDefault: false },
-        ];
-        setDashboards(mockDashboards);
-        setCurrentDashboardId("dash1");
-    }, []);
+  useEffect(() => {
+    loadDashboards();
+  }, [projectId]);
 
-    // Fetch dashboard config when ID changes
-    useEffect(() => {
-        if (currentDashboardId) {
-            // Replace with actual API call
-            // getDashboardConfig(currentDashboardId).then(config => {
-            //     setCurrentDashboard(config);
-            //     // Transform config.layout into react-grid-layout format
-            //     const rglLayout = config.widgets.map(w => ({
-            //         i: w.id,
-            //         x: w.position.x,
-            //         y: w.position.y,
-            //         w: w.position.w,
-            //         h: w.position.h,
-            //     }));
-            //     setLayout(rglLayout);
-            //     setWidgets(config.widgets);
-            // });
-            // Mock data for now
-            const mockConfig = {
-                id: "dash1",
-                name: "Default Dashboard",
-                layout: { /* ... */ },
-                widgets: [
-                    { id: "widget1", type: "Metric", title: "Active Projects", dataSource: "projects", dataConfig: { status: "Active" }, visualConfig: {}, position: { x: 0, y: 0, w: 2, h: 1 }, refreshInterval: 60 },
-                    { id: "widget2", type: "Chart", title: "Task Status Distribution", dataSource: "tasks", dataConfig: { groupBy: "status" }, visualConfig: { chartType: "pie" }, position: { x: 2, y: 0, w: 4, h: 2 }, refreshInterval: 120 },
-                    { id: "widget3", type: "List", title: "Recent Documents", dataSource: "documents", dataConfig: { limit: 5, sortBy: "createdAt", order: "desc" }, visualConfig: {}, position: { x: 0, y: 1, w: 2, h: 2 }, refreshInterval: 300 },
-                ]
-            };
-            setCurrentDashboard(mockConfig);
-            const rglLayout = mockConfig.widgets.map(w => ({
-                i: w.id,
-                x: w.position.x,
-                y: w.position.y,
-                w: w.position.w,
-                h: w.position.h,
-            }));
-            setLayout(rglLayout);
-            setWidgets(mockConfig.widgets);
-        }
-    }, [currentDashboardId]);
+  useEffect(() => {
+    if (activeDashboardId) {
+      loadWidgets(activeDashboardId);
+    }
+  }, [activeDashboardId]);
 
-    const handleLayoutChange = (newLayout) => {
-        // Only update state if in edit mode to prevent unwanted changes
-        if (isEditMode) {
-            setLayout(newLayout);
-            // Prepare layout data for saving
-            const updatedWidgetPositions = newLayout.map(item => ({
-                widgetId: item.i,
-                position: { x: item.x, y: item.y, w: item.w, h: item.h },
-            }));
-            // TODO: Debounce this call or save explicitly via button
-            // updateDashboardLayout(currentDashboardId, { layout: updatedWidgetPositions });
-            console.log("Layout changed (in edit mode):", updatedWidgetPositions);
-        }
-    };
+  const loadDashboards = async () => {
+    setIsLoading(true);
+    try {
+      const response = await dashboardService.getDashboards(projectId);
+      setDashboards(response);
+      if (response.length > 0 && !activeDashboardId) {
+        setActiveDashboardId(response[0].id); // Set first dashboard as active by default
+      }
+    } catch (error) {
+      console.error('Error loading dashboards:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load dashboards. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const handleAddWidget = (widgetConfig) => {
-        // Replace with actual API call to add widget
-        // addWidgetToDashboard(currentDashboardId, widgetConfig).then(newWidget => {
-        //     setWidgets([...widgets, newWidget]);
-        //     // Add to layout
-        //     const newItem = { i: newWidget.id, x: 0, y: Infinity, w: newWidget.position.w || 2, h: newWidget.position.h || 1 }; // Place at bottom
-        //     setLayout([...layout, newItem]);
-        // });
-        console.log("Adding widget:", widgetConfig);
-        const newWidget = { ...widgetConfig, id: `widget${widgets.length + 1}` }; // Mock ID
-        setWidgets([...widgets, newWidget]);
-        const newItem = { i: newWidget.id, x: 0, y: Infinity, w: newWidget.position?.w || 2, h: newWidget.position?.h || 1 };
-        setLayout([...layout, newItem]);
-        setIsWidgetLibraryOpen(false);
-    };
+  const loadWidgets = async (dashboardId: string) => {
+    setIsLoading(true);
+    try {
+      const response = await dashboardService.getWidgets(dashboardId);
+      setWidgets(response);
+    } catch (error) {
+      console.error('Error loading widgets:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load widgets for this dashboard. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const handleRemoveWidget = (widgetId) => {
-        // Replace with actual API call
-        // removeWidgetFromDashboard(widgetId).then(() => {
-        //     setWidgets(widgets.filter(w => w.id !== widgetId));
-        //     setLayout(layout.filter(l => l.i !== widgetId));
-        // });
-        console.log("Removing widget:", widgetId);
-        setWidgets(widgets.filter(w => w.id !== widgetId));
-        setLayout(layout.filter(l => l.i !== widgetId));
-    };
+  const handleAddDashboard = async () => {
+    // Placeholder for adding new dashboard logic
+    toast({
+      title: 'Info',
+      description: 'Add new dashboard functionality coming soon!',
+    });
+  };
 
-    const handleUpdateWidget = (widgetId, updatedConfig) => {
-        // Replace with actual API call
-        // updateWidgetConfig(widgetId, updatedConfig).then(updatedWidget => {
-        //     setWidgets(widgets.map(w => w.id === widgetId ? updatedWidget : w));
-        // });
-        console.log("Updating widget:", widgetId, updatedConfig);
-        setWidgets(widgets.map(w => w.id === widgetId ? { ...w, ...updatedConfig } : w));
-    };
+  const handleDashboardSettings = async () => {
+    // Placeholder for dashboard settings logic
+    toast({
+      title: 'Info',
+      description: 'Dashboard settings functionality coming soon!',
+    });
+  };
 
-    const toggleEditMode = () => {
-        if (isEditMode) {
-            // Save layout changes when exiting edit mode
-            const updatedWidgetPositions = layout.map(item => ({
-                widgetId: item.i,
-                position: { x: item.x, y: item.y, w: item.w, h: item.h },
-            }));
-            // Replace with actual API call
-            // updateDashboardLayout(currentDashboardId, { layout: updatedWidgetPositions });
-            console.log("Saving layout:", updatedWidgetPositions);
-        }
-        setIsEditMode(!isEditMode);
-    };
+  const handleAddWidget = async () => {
+    // Placeholder for adding new widget logic
+    toast({
+      title: 'Info',
+      description: 'Add new widget functionality coming soon!',
+    });
+  };
 
+  const renderWidget = (widget: any) => {
+    // This is a placeholder. In a real app, you'd have a component map
+    // and render the appropriate widget component based on widget.type
     return (
-        <div className="p-4 md:p-6 lg:p-8">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-                <h1 className="text-2xl font-semibold">{currentDashboard?.name || "Dashboard"}</h1>
-                <div className="flex gap-2">
-                    <Select value={currentDashboardId || ""} onValueChange={setCurrentDashboardId}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Select Dashboard" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {dashboards.map(dash => (
-                                <SelectItem key={dash.id} value={dash.id}>{dash.name}</SelectItem>
-                            ))}
-                            {/* Add options for Create, Clone, Delete */} 
-                        </SelectContent>
-                    </Select>
-                    <Button onClick={() => setIsWidgetLibraryOpen(true)}>Add Widget</Button>
-                    <Button variant={isEditMode ? "destructive" : "outline"} onClick={toggleEditMode}>
-                        {isEditMode ? "Save Layout" : "Edit Layout"}
-                    </Button>
-                    {/* Add Dashboard Settings Button */} 
-                </div>
-            </div>
-
-            <ResponsiveGridLayout
-                className="layout"
-                layouts={{ lg: layout, md: layout, sm: layout, xs: layout, xxs: layout }} // Adjust layouts per breakpoint if needed
-                breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
-                rowHeight={100} // Adjust as needed
-                onLayoutChange={handleLayoutChange}
-                isDraggable={isEditMode}
-                isResizable={isEditMode}
-                draggableHandle=".widget-drag-handle" // Add this class to the draggable part of WidgetComponent
-            >
-                {widgets.map(widget => (
-                    <div key={widget.id} className="bg-card rounded-lg shadow overflow-hidden">
-                        <WidgetComponent
-                            config={widget}
-                            isEditing={isEditMode}
-                            onRemove={() => handleRemoveWidget(widget.id)}
-                            onUpdate={(updatedConfig) => handleUpdateWidget(widget.id, updatedConfig)}
-                        />
-                    </div>
-                ))}
-            </ResponsiveGridLayout>
-
-            <WidgetLibrary
-                isOpen={isWidgetLibraryOpen}
-                onClose={() => setIsWidgetLibraryOpen(false)}
-                onAddWidget={handleAddWidget}
-            />
-        </div>
+      <Card key={widget.id} className="h-full">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">{widget.title}</CardTitle>
+          <RefreshCw className="h-4 w-4 text-muted-foreground cursor-pointer" />
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground text-sm">Widget Type: {widget.type}</p>
+          <p className="text-muted-foreground text-sm">Data Source: {widget.dataSource}</p>
+          {/* Render actual widget content here based on type and data */}
+          <div className="mt-4 h-32 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center text-muted-foreground">
+            {widget.title} Content
+          </div>
+        </CardContent>
+      </Card>
     );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">
+            {projectId ? `Project Dashboard for ${projectId}` : 'Your personalized insights at a glance'}
+          </p>
+        </div>
+        <div className="flex space-x-2">
+          <Button variant="outline" onClick={handleAddDashboard}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Dashboard
+          </Button>
+          <Button variant="outline" onClick={handleDashboardSettings}>
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
+          </Button>
+        </div>
+      </div>
+
+      {/* Dashboard Selector and Add Widget */}
+      <div className="flex justify-between items-center">
+        <Tabs value={activeDashboardId || ''} onValueChange={setActiveDashboardId}>
+          <TabsList>
+            {dashboards.map((dashboard) => (
+              <TabsTrigger key={dashboard.id} value={dashboard.id}>
+                {dashboard.name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <Button onClick={handleAddWidget}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Widget
+        </Button>
+      </div>
+
+      {/* Widget Grid */}
+      {isLoading ? (
+        <div className="flex justify-center items-center py-12">
+          <LayoutDashboard className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {widgets.length > 0 ? (
+            widgets.map(renderWidget)
+          ) : (
+            <Card className="col-span-full p-8 text-center text-muted-foreground">
+              <CardTitle>No widgets yet!</CardTitle>
+              <CardDescription className="mt-2">
+                Start by adding some widgets to your dashboard to see your data.
+              </CardDescription>
+              <Button onClick={handleAddWidget} className="mt-4">
+                <Plus className="h-4 w-4 mr-2" />
+                Add First Widget
+              </Button>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default DashboardPage;
+
 

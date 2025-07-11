@@ -1,251 +1,463 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { PlusCircle, List, KanbanSquare, Search, Filter } from "lucide-react";
-import TasksList from "./TasksList"; // Table view
-import TasksBoard from "./TasksBoard"; // Kanban board view
-import TaskForm from "./TaskForm"; // Modal or drawer for adding/editing tasks
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
-import { useParams } from "react-router-dom"; // To get projectId if needed
+import React, { useState, useEffect } from 'react';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import {
+  Plus,
+  Search,
+  Filter,
+  Download,
+  LayoutGrid,
+  List,
+  Loader2,
+  CheckCircle,
+  Hourglass,
+  Users,
+  Flag,
+} from 'lucide-react';
+import { useToast } from './ui/use-toast';
+import taskService from '../services/taskService';
 
-// Mock API functions (replace with actual API calls)
-const mockApi = {
-    getTasks: async (projectId, filters) => {
-        console.log(`Fetching tasks for project ${projectId} with filters:`, filters);
-        await new Promise(resolve => setTimeout(resolve, 300));
-        // Simulate filtering/sorting based on filters object
-        return [
-            { id: "task1", projectId: projectId, title: "Setup Project Structure", status: "Completed", priority: "High", assignedTo: { id: "user1", name: "Alice Smith" }, dueDate: "2024-01-20", estimatedHours: 8, actualHours: 6, completionPercentage: 100 },
-            { id: "task2", projectId: projectId, title: "Develop Foundation Plan", status: "In Progress", priority: "High", assignedTo: { id: "user3", name: "Charlie Brown" }, dueDate: "2024-02-15", estimatedHours: 40, actualHours: 25, completionPercentage: 60 },
-            { id: "task3", projectId: projectId, title: "Order Steel Beams", status: "Not Started", priority: "Medium", assignedTo: { id: "user4", name: "Diana Prince" }, dueDate: "2024-03-01", estimatedHours: 4, actualHours: 0, completionPercentage: 0 },
-            { id: "task4", projectId: projectId, title: "Site Preparation", status: "In Progress", priority: "Medium", assignedTo: { id: "user4", name: "Diana Prince" }, dueDate: "2024-02-28", estimatedHours: 80, actualHours: 50, completionPercentage: 62 },
-            { id: "task5", projectId: projectId, title: "Client Meeting - Phase 1 Review", status: "Completed", priority: "Low", assignedTo: { id: "user1", name: "Alice Smith" }, dueDate: "2024-03-10", estimatedHours: 2, actualHours: 2, completionPercentage: 100 },
-            { id: "task6", projectId: projectId, title: "Submit Permit Application", status: "On Hold", priority: "High", assignedTo: { id: "user2", name: "Bob Johnson" }, dueDate: "2024-02-01", estimatedHours: 16, actualHours: 4, completionPercentage: 10 },
-        ];
-    },
-    getTaskStatuses: async () => ["Not Started", "In Progress", "On Hold", "Completed", "Cancelled"],
-    getTaskPriorities: async () => ["Low", "Medium", "High", "Critical"],
-    getUsers: async () => [
-        { id: "user1", name: "Alice Smith" },
-        { id: "user2", name: "Bob Johnson" },
-        { id: "user3", name: "Charlie Brown" },
-        { id: "user4", name: "Diana Prince" },
-    ],
-    // Add other mock API calls: createTask, updateTask, deleteTask, etc.
-};
+// import TasksList from './TasksList';
+// import TasksBoard from './TasksBoard';
+// import TaskForm from './TaskForm';
 
-const TasksPage = () => {
-    const { projectId } = useParams(); // Get projectId from URL if viewing tasks for a specific project
-    const [viewMode, setViewMode] = useState("board"); // Default to board view
-    const [tasks, setTasks] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [filters, setFilters] = useState({ status: "", priority: "", assignedTo: "" });
-    const [sort, setSort] = useState({ field: "dueDate", order: "asc" }); // Default sort for tasks
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingTask, setEditingTask] = useState(null); // Task object to edit, null for new
+interface TasksPageProps {
+  projectId?: string; // Optional - if provided, shows tasks for specific project
+}
 
-    // Fetch users, statuses, priorities for filters
-    const [users, setUsers] = useState([]);
-    const [statuses, setStatuses] = useState([]);
-    const [priorities, setPriorities] = useState([]);
+const TasksPage: React.FC<TasksPageProps> = ({ projectId }) => {
+  const { toast } = useToast();
+  const [activeView, setActiveView] = useState('list');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
+  const [filterAssignedTo, setFilterAssignedTo] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [editingTask, setEditingTask] = useState<any>(null);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [statuses, setStatuses] = useState<any[]>([]);
+  const [priorities, setPriorities] = useState<any[]>([]);
+  const [assignedUsers, setAssignedUsers] = useState<any[]>([]); // Mock for now
+  const [metrics, setMetrics] = useState({
+    totalTasks: 0,
+    completedTasks: 0,
+    inProgressTasks: 0,
+    overdueTasks: 0,
+  });
 
-    useEffect(() => {
-        const fetchFilterOptions = async () => {
-            try {
-                const [fetchedUsers, fetchedStatuses, fetchedPriorities] = await Promise.all([
-                    mockApi.getUsers(),
-                    mockApi.getTaskStatuses(),
-                    mockApi.getTaskPriorities(),
-                ]);
-                setUsers(fetchedUsers);
-                setStatuses(fetchedStatuses);
-                setPriorities(fetchedPriorities);
-            } catch (err) {
-                console.error("Error fetching filter options:", err);
-            }
-        };
-        fetchFilterOptions();
-    }, []);
+  useEffect(() => {
+    loadData();
+  }, [projectId]);
 
-    const fetchTasks = useCallback(async () => {
-        // Use a default projectId if not provided by URL, or handle accordingly
-        const currentProjectId = projectId || "proj1"; // Example: default to proj1 if no ID in URL
-        if (!currentProjectId) {
-            setError("Project ID is required to view tasks.");
-            setIsLoading(false);
-            return;
-        }
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [tasksResponse, statusesResponse, prioritiesResponse] = await Promise.all([
+        taskService.getTasks(projectId || ''),
+        taskService.getTaskStatuses(),
+        taskService.getTaskPriorities(),
+      ]);
 
-        setIsLoading(true);
-        setError(null);
-        try {
-            const params = {
-                search: searchTerm,
-                ...filters,
-                sortBy: sort.field,
-                sortOrder: sort.order,
-                // Add pagination params if needed
-            };
-            const data = await mockApi.getTasks(currentProjectId, params);
-            setTasks(data);
-        } catch (err) {
-            console.error("Error fetching tasks:", err);
-            setError("Failed to load tasks.");
-        } finally {
-            setIsLoading(false);
-        }
-    }, [projectId, searchTerm, filters, sort]);
+      setTasks(tasksResponse);
+      setStatuses(statusesResponse.map((s: string) => ({ value: s, label: s })));
+      setPriorities(prioritiesResponse.map((p: string) => ({ value: p, label: p })));
 
-    useEffect(() => {
-        fetchTasks();
-    }, [fetchTasks]); // Refetch when filters/sort/search change
+      // Mock assigned users for now
+      setAssignedUsers([
+        { id: 'user-1', name: 'John Doe' },
+        { id: 'user-2', name: 'Jane Smith' },
+      ]);
 
-    const handleFilterChange = (filterName, value) => {
-        setFilters(prev => ({ ...prev, [filterName]: value }));
-    };
+      // Calculate metrics (mock for now, ideally from API)
+      const completed = tasksResponse.filter((t: any) => t.status === 'Completed').length;
+      const inProgress = tasksResponse.filter((t: any) => t.status === 'In Progress').length;
+      const overdue = tasksResponse.filter((t: any) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Completed').length;
 
-    const handleSortChange = (value) => {
-        const [field, order] = value.split("_");
-        setSort({ field, order });
-    };
+      setMetrics({
+        totalTasks: tasksResponse.length,
+        completedTasks: completed,
+        inProgressTasks: inProgress,
+        overdueTasks: overdue,
+      });
 
-    const openAddTaskForm = () => {
-        setEditingTask(null);
-        setIsFormOpen(true);
-    };
+    } catch (error) {
+      console.error('Error loading task data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load task data. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const openEditTaskForm = (task) => {
-        setEditingTask(task);
-        setIsFormOpen(true);
-    };
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+  };
 
-    const handleFormSave = (taskData) => {
-        // Replace with actual API call (create or update)
-        console.log("Saving task:", taskData);
-        setIsFormOpen(false);
-        setEditingTask(null);
-        fetchTasks(); // Refresh list after save
-    };
+  const handleFilterChange = (filterName: string, value: string) => {
+    switch (filterName) {
+      case 'status':
+        setFilterStatus(value);
+        break;
+      case 'priority':
+        setFilterPriority(value);
+        break;
+      case 'assignedTo':
+        setFilterAssignedTo(value);
+        break;
+    }
+  };
 
-    const handleTaskDelete = (taskId) => {
-        // Replace with actual API call
-        if (window.confirm("Are you sure you want to delete this task?")) {
-            console.log("Deleting task:", taskId);
-            setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
-            // Or call fetchTasks();
-        }
-    };
+  const handleAddTask = () => {
+    setEditingTask(null);
+    setShowTaskForm(true);
+  };
 
-    const handleTaskStatusUpdate = (taskId, newStatus) => {
-        // API call to update status, then update local state or refetch
-        console.log(`Updating task ${taskId} status to ${newStatus}`);
-        setTasks(prevTasks => prevTasks.map(task => 
-            task.id === taskId ? { ...task, status: newStatus } : task
-        ));
-        // Consider refetching if backend logic is complex
-    };
+  const handleEditTask = (task: any) => {
+    setEditingTask(task);
+    setShowTaskForm(true);
+  };
 
+  const handleTaskFormSubmit = async (taskData: any) => {
+    setIsLoading(true);
+    try {
+      if (editingTask) {
+        await taskService.updateTask(editingTask.id, taskData);
+        toast({
+          title: 'Success',
+          description: 'Task updated successfully.',
+        });
+      } else {
+        await taskService.createTask(taskData);
+        toast({
+          title: 'Success',
+          description: 'Task created successfully.',
+        });
+      }
+      setShowTaskForm(false);
+      setEditingTask(null);
+      loadData();
+    } catch (error) {
+      console.error('Error saving task:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save task. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    setIsLoading(true);
+    try {
+      await taskService.deleteTask(taskId);
+      toast({
+        title: 'Success',
+        description: 'Task deleted successfully.',
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete task. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredTasks = tasks.filter((task) => {
+    const matchesSearch =
+      !searchTerm ||
+      task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      task.description.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = !filterStatus || task.status === filterStatus;
+    const matchesPriority = !filterPriority || task.priority === filterPriority;
+    const matchesAssignedTo = !filterAssignedTo || task.assignedTo === filterAssignedTo;
+
+    return matchesSearch && matchesStatus && matchesPriority && matchesAssignedTo;
+  });
+
+  if (isLoading && tasks.length === 0) {
     return (
-        <div className="p-4 md:p-6 lg:p-8">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-                <h1 className="text-2xl font-semibold">Tasks Management {projectId ? `(Project: ${projectId})` : ""}</h1>
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogTrigger asChild>
-                        <Button onClick={openAddTaskForm}>
-                            <PlusCircle className="mr-2 h-4 w-4" /> Add Task
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[700px] lg:max-w-[900px]">
-                        <DialogHeader>
-                            <DialogTitle>{editingTask ? "Edit Task" : "Add New Task"}</DialogTitle>
-                        </DialogHeader>
-                        <TaskForm
-                            initialData={editingTask}
-                            projectId={projectId || "proj1"} // Pass current project ID
-                            onSave={handleFormSave}
-                            onCancel={() => setIsFormOpen(false)}
-                        />
-                    </DialogContent>
-                </Dialog>
-            </div>
-
-            {/* Filters and View Toggle */} 
-            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-2 flex-wrap">
-                <div className="flex gap-2 flex-grow md:flex-grow-0">
-                    <Input
-                        placeholder="Search tasks..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="max-w-xs"
-                        prefix={<Search className="h-4 w-4 text-muted-foreground" />} 
-                    />
-                    {/* Add Filter Button/Dropdown here */}
-                    <Button variant="outline" size="icon" title="Filters"><Filter className="h-4 w-4" /></Button>
-                </div>
-                
-                {/* Simple Filters Example */} 
-                <div className="flex gap-2 flex-wrap">
-                     <Select value={filters.status} onValueChange={(value) => handleFilterChange("status", value)}>
-                        <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="">All Statuses</SelectItem>
-                            {statuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                     <Select value={filters.priority} onValueChange={(value) => handleFilterChange("priority", value)}>
-                        <SelectTrigger className="w-[150px]"><SelectValue placeholder="Priority" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="">All Priorities</SelectItem>
-                            {priorities.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                     <Select value={filters.assignedTo} onValueChange={(value) => handleFilterChange("assignedTo", value)}>
-                        <SelectTrigger className="w-[180px]"><SelectValue placeholder="Assignee" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="">All Assignees</SelectItem>
-                            {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <Tabs value={viewMode} onValueChange={setViewMode} className="w-full md:w-auto mt-2 md:mt-0">
-                    <TabsList>
-                        <TabsTrigger value="board"><KanbanSquare className="mr-2 h-4 w-4" /> Board</TabsTrigger>
-                        <TabsTrigger value="list"><List className="mr-2 h-4 w-4" /> List</TabsTrigger>
-                    </TabsList>
-                </Tabs>
-            </div>
-
-            {/* Content Area */} 
-            <div className="mt-4">
-                {isLoading && <div className="text-center p-4">Loading tasks...</div>}
-                {error && <div className="text-center p-4 text-red-500">{error}</div>}
-                {!isLoading && !error && (
-                    viewMode === "board" ? (
-                        <TasksBoard 
-                            tasks={tasks} 
-                            statuses={statuses} // Pass statuses for columns
-                            onEditTask={openEditTaskForm} 
-                            onDeleteTask={handleTaskDelete} 
-                            onStatusChange={handleTaskStatusUpdate} // For drag-and-drop
-                        />
-                    ) : (
-                        <TasksList 
-                            tasks={tasks} 
-                            onEditTask={openEditTaskForm} 
-                            onDeleteTask={handleTaskDelete} 
-                            // Pass sort config and handler if list handles sorting
-                        />
-                    )
-                )}
-            </div>
-        </div>
+      <div className="flex justify-center items-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
     );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Tasks Management</h1>
+          <p className="text-muted-foreground">
+            {projectId ? `Manage tasks for project ${projectId}` : 'Organize and track all your project tasks'}
+          </p>
+        </div>
+        <div className="flex space-x-2">
+          <Button variant="outline" onClick={() => {}}>
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+          <Button onClick={handleAddTask}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create New Task
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
+            <List className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.totalTasks}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Completed Tasks</CardTitle>
+            <CheckCircle className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.completedTasks}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
+            <Hourglass className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.inProgressTasks}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Overdue Tasks</CardTitle>
+            <Flag className="h-4 w-4 text-red-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.overdueTasks}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <Tabs value={activeView} onValueChange={setActiveView}>
+        <TabsList>
+          <TabsTrigger value="list">List View</TabsTrigger>
+          <TabsTrigger value="board">Board View</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list" className="space-y-4">
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Search tasks..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Select value={filterStatus} onValueChange={(value) => handleFilterChange('status', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Statuses</SelectItem>
+                  {statuses.map((status) => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterPriority} onValueChange={(value) => handleFilterChange('priority', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Priorities</SelectItem>
+                  {priorities.map((priority) => (
+                    <SelectItem key={priority.value} value={priority.value}>
+                      {priority.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterAssignedTo} onValueChange={(value) => handleFilterChange('assignedTo', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by Assignee" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Assignees</SelectItem>
+                  {assignedUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Tasks List Component */}
+          {/* <TasksList
+            tasks={filteredTasks}
+            onEdit={handleEditTask}
+            onDelete={handleDeleteTask}
+            onUpdateStatus={async (taskId, newStatus) => {
+              try {
+                await taskService.updateTask(taskId, { status: newStatus });
+                toast({
+                  title: 'Success',
+                  description: 'Task status updated successfully.',
+                });
+                loadData();
+              } catch (error) {
+                console.error('Error updating task status:', error);
+                toast({
+                  title: 'Error',
+                  description: 'Failed to update task status. Please try again.',
+                  variant: 'destructive',
+                });
+              }
+            }}
+          /> */}
+          <Card className="min-h-[300px] flex items-center justify-center">
+            <CardContent className="text-center text-muted-foreground">
+              <List className="mx-auto h-12 w-12 mb-4" />
+              <p>Tasks List view coming soon!</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="board" className="space-y-4">
+          {/* Search and Filters (repeated for board view for now, can be refactored) */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Search tasks..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Select value={filterStatus} onValueChange={(value) => handleFilterChange('status', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Statuses</SelectItem>
+                  {statuses.map((status) => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterPriority} onValueChange={(value) => handleFilterChange('priority', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Priorities</SelectItem>
+                  {priorities.map((priority) => (
+                    <SelectItem key={priority.value} value={priority.value}>
+                      {priority.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterAssignedTo} onValueChange={(value) => handleFilterChange('assignedTo', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by Assignee" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Assignees</SelectItem>
+                  {assignedUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Tasks Board Component */}
+          {/* <TasksBoard
+            tasks={filteredTasks}
+            onEdit={handleEditTask}
+            onDelete={handleDeleteTask}
+            onUpdateStatus={async (taskId, newStatus) => {
+              try {
+                await taskService.updateTask(taskId, { status: newStatus });
+                toast({
+                  title: 'Success',
+                  description: 'Task status updated successfully.',
+                });
+                loadData();
+              } catch (error) {
+                console.error('Error updating task status:', error);
+                toast({
+                  title: 'Error',
+                  description: 'Failed to update task status. Please try again.',
+                  variant: 'destructive',
+                });
+              }
+            }}
+          /> */}
+          <Card className="min-h-[300px] flex items-center justify-center">
+            <CardContent className="text-center text-muted-foreground">
+              <LayoutGrid className="mx-auto h-12 w-12 mb-4" />
+              <p>Tasks Board view coming soon!</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Task Form Modal */}
+      {/* {showTaskForm && (
+        <TaskForm
+          task={editingTask}
+          onSubmit={handleTaskFormSubmit}
+          onCancel={() => {
+            setShowTaskForm(false);
+            setEditingTask(null);
+          }}
+        />
+      )} */}
+    </div>
+  );
 };
 
 export default TasksPage;
+
 

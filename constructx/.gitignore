@@ -11,3 +11,8 @@
 .bash_history
 *.log
 *.tmp
+
+# Parent directory cache files
+../.browser_data_dir/
+../.bash_history
+../.lesshst

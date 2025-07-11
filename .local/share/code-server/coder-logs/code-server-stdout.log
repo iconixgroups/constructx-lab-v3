@@ -77,3 +77,70 @@
 [08:57:13] [10.67.81.1][4b30eac0][ManagementConnection] New connection established.
 [08:57:17] [10.67.81.1][4da63d05][ExtensionHostConnection] New connection established.
 [08:57:17] [10.67.81.1][4da63d05][ExtensionHostConnection] <131537> Launched Extension Host Process.
+[09:20:58] [10.101.102.1][ccabfebc][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
+[09:36:15] [10.67.81.1][4b30eac0][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
+[09:05:28] [10.101.102.1][ccabfebc][ManagementConnection] The reconnection grace time of 3h has expired, so the connection will be disposed.
+[09:05:38] [10.101.102.1][89a6915a][ExtensionHostConnection] <127078> Extension Host Process exited with code: 0, signal: null.
+[10:01:37] [10.67.81.1][4b30eac0][ManagementConnection] The reconnection grace time of 3h has expired, so the connection will be disposed.
+[10:01:38] [10.67.81.1][4da63d05][ExtensionHostConnection] <131537> Extension Host Process exited with code: 0, signal: null.
+[11:24:21] [10.1.192.1][8ac7bc12][ManagementConnection] New connection established.
+[11:24:25] [10.1.192.1][d8241803][ExtensionHostConnection] New connection established.
+[11:24:25] [10.1.192.1][d8241803][ExtensionHostConnection] <195362> Launched Extension Host Process.
+[11:35:42] [10.1.192.1][8ac7bc12][ManagementConnection] The client has disconnected gracefully, so the connection will be disposed.
+[11:35:43] [10.1.192.1][d8241803][ExtensionHostConnection] <195362> Extension Host Process exited with code: 0, signal: null.
+[11:35:54] [10.1.192.1][52a3cdf0][ManagementConnection] New connection established.
+[11:35:58] [10.1.192.1][d2b987aa][ExtensionHostConnection] New connection established.
+[11:35:58] [10.1.192.1][d2b987aa][ExtensionHostConnection] <203201> Launched Extension Host Process.
+[11:57:09] [10.45.162.1][514a98c8][ManagementConnection] New connection established.
+[11:57:13] [10.45.162.1][386668b4][ExtensionHostConnection] New connection established.
+[11:57:13] [10.45.162.1][386668b4][ExtensionHostConnection] <208494> Launched Extension Host Process.
+[12:18:52] [10.1.192.1][52a3cdf0][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
+[12:19:28] [10.1.192.1][52a3cdf0][ManagementConnection] Another client has connected, will shorten the wait for reconnection 5m before disposing...
+[12:19:28] [10.174.247.1][a6ff7781][ManagementConnection] New connection established.
+[12:19:32] [10.174.247.1][dd50b00d][ExtensionHostConnection] New connection established.
+[12:19:32] [10.174.247.1][dd50b00d][ExtensionHostConnection] <214322> Launched Extension Host Process.
+[12:24:29] [10.1.192.1][d2b987aa][ExtensionHostConnection] <203201> Extension Host Process exited with code: 0, signal: null.
+[12:24:29] [10.1.192.1][52a3cdf0][ManagementConnection] The reconnection short grace time of 5m has expired, so the connection will be disposed.
+[12:33:57] [10.45.162.1][514a98c8][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
+[12:53:31] [10.174.247.1][a6ff7781][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
+[10:48:29] [10.45.162.1][514a98c8][ManagementConnection] The reconnection grace time of 3h has expired, so the connection will be disposed.
+[10:48:38] [10.45.162.1][386668b4][ExtensionHostConnection] <208494> Extension Host Process exited with code: 0, signal: null.
+[10:50:04] [10.174.247.1][a6ff7781][ManagementConnection] Another client has connected, will shorten the wait for reconnection 5m before disposing...
+[10:50:04] [10.88.4.1][59a45e92][ManagementConnection] New connection established.
+[10:50:08] [10.88.4.1][72e38274][ExtensionHostConnection] New connection established.
+[10:50:08] [10.88.4.1][72e38274][ExtensionHostConnection] <265430> Launched Extension Host Process.
+[10:55:04] [10.174.247.1][a6ff7781][ManagementConnection] The reconnection short grace time of 5m has expired, so the connection will be disposed.
+[10:55:04] [10.174.247.1][dd50b00d][ExtensionHostConnection] <214322> Extension Host Process exited with code: 0, signal: null.
+[10:55:25] [10.88.4.1][59a45e92][ManagementConnection] The client has disconnected gracefully, so the connection will be disposed.
+[10:55:25] [10.88.4.1][72e38274][ExtensionHostConnection] <265430> Extension Host Process exited with code: 0, signal: null.
+[12:33:19] [10.66.99.1][cb5ee7fb][ManagementConnection] New connection established.
+[12:33:22] [10.66.99.1][53d129fd][ExtensionHostConnection] New connection established.
+[12:33:22] [10.66.99.1][53d129fd][ExtensionHostConnection] <275239> Launched Extension Host Process.
+[06:08:35] [10.189.97.1][53d129fd][ExtensionHostConnection] The client has reconnected.
+[06:08:58] [10.189.97.1][cb5ee7fb][ManagementConnection] The client has reconnected.
+[06:46:21] [10.189.97.1][cb5ee7fb][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
+[14:00:15] [10.189.97.1][cb5ee7fb][ManagementConnection] Another client has connected, will shorten the wait for reconnection 5m before disposing...
+[14:00:15] [10.97.219.1][f82761db][ManagementConnection] New connection established.
+[14:00:18] [10.97.219.1][e93dbf6e][ExtensionHostConnection] New connection established.
+[14:00:18] [10.97.219.1][e93dbf6e][ExtensionHostConnection] <292485> Launched Extension Host Process.
+[14:05:15] [10.189.97.1][cb5ee7fb][ManagementConnection] The reconnection short grace time of 5m has expired, so the connection will be disposed.
+[14:05:15] [10.189.97.1][53d129fd][ExtensionHostConnection] <275239> Extension Host Process exited with code: 0, signal: null.
+[14:21:22] [10.150.231.1][5f539c03][ManagementConnection] New connection established.
+[14:21:26] [10.150.231.1][c2f056f0][ExtensionHostConnection] New connection established.
+[14:21:26] [10.150.231.1][c2f056f0][ExtensionHostConnection] <302223> Launched Extension Host Process.
+[14:36:34] [10.97.219.1][f82761db][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
+[07:03:08] [10.97.219.1][f82761db][ManagementConnection] Another client has connected, will shorten the wait for reconnection 5m before disposing...
+[07:03:08] [10.125.145.1][5f539c03][ManagementConnection] The client has reconnected.
+[07:03:10] [10.125.145.1][c2f056f0][ExtensionHostConnection] The client has reconnected.
+[07:08:08] [10.97.219.1][f82761db][ManagementConnection] The reconnection short grace time of 5m has expired, so the connection will be disposed.
+[07:08:08] [10.97.219.1][e93dbf6e][ExtensionHostConnection] <292485> Extension Host Process exited with code: 0, signal: null.
+[07:00:20] [10.133.119.1][b075436a][ManagementConnection] New connection established.
+[07:00:23] [10.133.119.1][4387b327][ExtensionHostConnection] New connection established.
+[07:00:23] [10.133.119.1][4387b327][ExtensionHostConnection] <317973> Launched Extension Host Process.
+[07:00:36] [10.125.145.1][5f539c03][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...
+[07:18:46] [10.125.145.1][5f539c03][ManagementConnection] Another client has connected, will shorten the wait for reconnection 5m before disposing...
+[07:18:46] [10.74.197.1][b8d9ae6e][ManagementConnection] New connection established.
+[07:18:50] [10.74.197.1][7b970ba4][ExtensionHostConnection] New connection established.
+[07:18:50] [10.74.197.1][7b970ba4][ExtensionHostConnection] <323933> Launched Extension Host Process.
+[07:23:46] [10.125.145.1][5f539c03][ManagementConnection] The reconnection short grace time of 5m has expired, so the connection will be disposed.
+[07:23:47] [10.125.145.1][c2f056f0][ExtensionHostConnection] <302223> Extension Host Process exited with code: 0, signal: null.

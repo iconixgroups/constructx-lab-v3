@@ -1,168 +1,425 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"; // For view toggle
-import { PlusCircle, List, LayoutGrid, Search, Filter } from "lucide-react";
-import LeadPipeline from "./LeadPipeline"; // Kanban view
-import LeadsList from "./LeadsList"; // Table view
-import LeadForm from "./LeadForm"; // Modal or drawer for adding/editing leads
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog"; // For Add/Edit Lead
+import React, { useState, useEffect } from 'react';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { 
+  Plus, 
+  Search, 
+  Filter, 
+  Download, 
+  LayoutGrid, 
+  List, 
+  Loader2,
+  BarChart,
+  DollarSign,
+  Users,
+  ArrowRight
+} from 'lucide-react';
+import { useToast } from './ui/use-toast';
+import leadService from '../services/leadService';
 
-// Mock API functions (replace with actual API calls)
-const mockApi = {
-    getLeads: async (filters) => {
-        console.log("Fetching leads with filters:", filters);
-        await new Promise(resolve => setTimeout(resolve, 300));
-        // Simulate filtering/sorting based on filters object
-        return [
-            { id: "lead1", name: "Alpha Project Inquiry", clientCompanyId: "client1", source: "Website", estimatedValue: 50000, status: "New", probability: 20, assignedTo: "user1", createdAt: "2024-05-20T10:00:00Z", lastActivityAt: "2024-05-21T11:00:00Z" },
-            { id: "lead2", name: "Beta Corp Expansion", clientCompanyId: "client2", source: "Referral", estimatedValue: 120000, status: "Qualified", probability: 60, assignedTo: "user2", createdAt: "2024-05-15T14:30:00Z", lastActivityAt: "2024-05-29T09:15:00Z" },
-            { id: "lead3", name: "Gamma Services RFQ", clientCompanyId: "client3", source: "Cold Call", estimatedValue: 75000, status: "Proposal", probability: 75, assignedTo: "user1", createdAt: "2024-05-10T08:00:00Z", lastActivityAt: "2024-05-30T16:45:00Z" },
-            { id: "lead4", name: "Delta Renovation Bid", clientCompanyId: "client4", source: "Website", estimatedValue: 25000, status: "Contacted", probability: 40, assignedTo: "user2", createdAt: "2024-05-25T12:00:00Z", lastActivityAt: "2024-05-26T10:30:00Z" },
-        ];
-    },
-    getLeadStatuses: async () => ["New", "Contacted", "Qualified", "Proposal", "Negotiation", "Won", "Lost"],
-    // Add other mock API calls: createLead, updateLead, deleteLead, etc.
-};
+// import LeadPipeline from './LeadPipeline';
+// import LeadsList from './LeadsList';
+// import LeadForm from './LeadForm';
 
-const LeadsPage = () => {
-    const [viewMode, setViewMode] = useState("pipeline"); // 'pipeline' or 'list'
-    const [leads, setLeads] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [filters, setFilters] = useState({ status: "", source: "", assignedTo: "" });
-    const [sort, setSort] = useState({ field: "createdAt", order: "desc" });
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingLead, setEditingLead] = useState(null); // Lead object to edit, null for new
+interface LeadsPageProps {
+  projectId?: string; // Optional - if provided, shows leads for specific project
+}
 
-    const fetchLeads = useCallback(async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const params = {
-                search: searchTerm,
-                ...filters,
-                sortBy: sort.field,
-                sortOrder: sort.order,
-                // Add pagination params if needed
-            };
-            const data = await mockApi.getLeads(params);
-            setLeads(data);
-        } catch (err) {
-            console.error("Error fetching leads:", err);
-            setError("Failed to load leads.");
-        } finally {
-            setIsLoading(false);
-        }
-    }, [searchTerm, filters, sort]);
+const LeadsPage: React.FC<LeadsPageProps> = ({ projectId }) => {
+  const { toast } = useToast();
+  const [activeView, setActiveView] = useState('pipeline');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterAssignedTo, setFilterAssignedTo] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showLeadForm, setShowLeadForm] = useState(false);
+  const [editingLead, setEditingLead] = useState<any>(null);
+  const [leads, setLeads] = useState<any[]>([]);
+  const [statuses, setStatuses] = useState<any[]>([]);
+  const [assignedUsers, setAssignedUsers] = useState<any[]>([]); // Mock for now
+  const [metrics, setMetrics] = useState({
+    totalLeads: 0,
+    qualifiedLeads: 0,
+    wonLeads: 0,
+    totalEstimatedValue: 0,
+  });
 
-    useEffect(() => {
-        fetchLeads();
-    }, [fetchLeads]); // Refetch when filters/sort/search change
+  useEffect(() => {
+    loadData();
+  }, [projectId]);
 
-    const handleFilterChange = (filterName, value) => {
-        setFilters(prev => ({ ...prev, [filterName]: value }));
-    };
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [leadsResponse, statusesResponse, metricsResponse] = await Promise.all([
+        leadService.getLeads(projectId || ''),
+        leadService.getLeadStatuses(),
+        leadService.getLeadMetrics(projectId || ''),
+      ]);
+      
+      setLeads(leadsResponse);
+      setStatuses(statusesResponse.map((s: string) => ({ value: s, label: s })));
+      setMetrics(metricsResponse);
 
-    const handleSortChange = (value) => {
-        const [field, order] = value.split("_");
-        setSort({ field, order });
-    };
+      // Mock assigned users for now
+      setAssignedUsers([
+        { id: 'user-1', name: 'John Doe' },
+        { id: 'user-2', name: 'Jane Smith' },
+      ]);
 
-    const openAddLeadForm = () => {
-        setEditingLead(null);
-        setIsFormOpen(true);
-    };
+    } catch (error) {
+      console.error('Error loading lead data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load lead data. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const openEditLeadForm = (lead) => {
-        setEditingLead(lead);
-        setIsFormOpen(true);
-    };
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+  };
 
-    const handleFormSave = (leadData) => {
-        // Replace with actual API call (create or update)
-        console.log("Saving lead:", leadData);
-        setIsFormOpen(false);
-        setEditingLead(null);
-        fetchLeads(); // Refresh list after save
-    };
+  const handleFilterChange = (filterName: string, value: string) => {
+    switch (filterName) {
+      case 'status':
+        setFilterStatus(value);
+        break;
+      case 'assignedTo':
+        setFilterAssignedTo(value);
+        break;
+    }
+  };
 
-    const handleLeadUpdate = (updatedLead) => {
-        // Optimistic update or refetch
-        setLeads(prevLeads => prevLeads.map(l => l.id === updatedLead.id ? updatedLead : l));
-        // Or call fetchLeads();
-    };
+  const handleAddLead = () => {
+    setEditingLead(null);
+    setShowLeadForm(true);
+  };
 
-    const handleLeadDelete = (leadId) => {
-        // Replace with actual API call
-        console.log("Deleting lead:", leadId);
-        setLeads(prevLeads => prevLeads.filter(l => l.id !== leadId));
-        // Or call fetchLeads();
-    };
+  const handleEditLead = (lead: any) => {
+    setEditingLead(lead);
+    setShowLeadForm(true);
+  };
 
+  const handleLeadFormSubmit = async (leadData: any) => {
+    setIsLoading(true);
+    try {
+      if (editingLead) {
+        await leadService.updateLead(editingLead.id, leadData);
+        toast({
+          title: 'Success',
+          description: 'Lead updated successfully.'
+        });
+      } else {
+        await leadService.createLead(leadData);
+        toast({
+          title: 'Success',
+          description: 'Lead created successfully.'
+        });
+      }
+      setShowLeadForm(false);
+      setEditingLead(null);
+      loadData();
+    } catch (error) {
+      console.error('Error saving lead:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save lead. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteLead = async (leadId: string) => {
+    setIsLoading(true);
+    try {
+      await leadService.deleteLead(leadId);
+      toast({
+        title: 'Success',
+        description: 'Lead deleted successfully.'
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error deleting lead:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete lead. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConvertLead = async (leadId: string) => {
+    setIsLoading(true);
+    try {
+      await leadService.convertToProject(leadId);
+      toast({
+        title: 'Success',
+        description: 'Lead converted to project successfully.'
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error converting lead:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to convert lead to project. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredLeads = leads.filter(lead => {
+    const matchesSearch = !searchTerm || 
+      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.source.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.clientCompany?.name.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = !filterStatus || lead.status === filterStatus;
+    const matchesAssignedTo = !filterAssignedTo || lead.assignedTo === filterAssignedTo;
+    
+    return matchesSearch && matchesStatus && matchesAssignedTo;
+  });
+
+  if (isLoading && leads.length === 0) {
     return (
-        <div className="p-4 md:p-6 lg:p-8">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-                <h1 className="text-2xl font-semibold">Leads Management</h1>
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                    <DialogTrigger asChild>
-                        <Button onClick={openAddLeadForm}>
-                            <PlusCircle className="mr-2 h-4 w-4" /> Add Lead
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[600px]">
-                        <DialogHeader>
-                            <DialogTitle>{editingLead ? "Edit Lead" : "Add New Lead"}</DialogTitle>
-                        </DialogHeader>
-                        <LeadForm
-                            initialData={editingLead}
-                            onSave={handleFormSave}
-                            onCancel={() => setIsFormOpen(false)}
-                        />
-                    </DialogContent>
-                </Dialog>
-            </div>
-
-            {/* Filters and View Toggle */} 
-            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-2">
-                <div className="flex gap-2 w-full md:w-auto">
-                    <Input
-                        placeholder="Search leads..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="max-w-sm"
-                        prefix={<Search className="h-4 w-4 text-muted-foreground" />} // Custom Input with prefix?
-                    />
-                    {/* Add Filter Button/Dropdown here */}
-                    <Button variant="outline" size="icon"><Filter className="h-4 w-4" /></Button>
-                </div>
-                <Tabs value={viewMode} onValueChange={setViewMode} className="w-full md:w-auto">
-                    <TabsList>
-                        <TabsTrigger value="pipeline"><LayoutGrid className="mr-2 h-4 w-4" /> Pipeline</TabsTrigger>
-                        <TabsTrigger value="list"><List className="mr-2 h-4 w-4" /> List</TabsTrigger>
-                    </TabsList>
-                </Tabs>
-            </div>
-
-            {/* Add more filter controls if needed (Status, Source, Assigned To) */} 
-
-            {/* Content Area */} 
-            <div className="mt-4">
-                {isLoading && <div className="text-center p-4">Loading leads...</div>}
-                {error && <div className="text-center p-4 text-red-500">{error}</div>}
-                {!isLoading && !error && (
-                    viewMode === "pipeline" ? (
-                        <LeadPipeline leads={leads} onUpdateLead={handleLeadUpdate} onEditLead={openEditLeadForm} />
-                    ) : (
-                        <LeadsList leads={leads} onEditLead={openEditLeadForm} onDeleteLead={handleLeadDelete} />
-                    )
-                )}
-            </div>
-        </div>
+      <div className="flex justify-center items-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
     );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Leads Management</h1>
+          <p className="text-muted-foreground">
+            {projectId ? `Manage leads for project ${projectId}` : 'Track and manage your potential business opportunities'}
+          </p>
+        </div>
+        <div className="flex space-x-2">
+          <Button variant="outline" onClick={() => {}}>
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+          <Button onClick={handleAddLead}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add New Lead
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.totalLeads}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Qualified Leads</CardTitle>
+            <BarChart className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.qualifiedLeads}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Won Leads</CardTitle>
+            <ArrowRight className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.wonLeads}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Est. Value</CardTitle>
+            <DollarSign className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${metrics.totalEstimatedValue.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <Tabs value={activeView} onValueChange={setActiveView}>
+        <TabsList>
+          <TabsTrigger value="pipeline">Pipeline View</TabsTrigger>
+          <TabsTrigger value="list">List View</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pipeline" className="space-y-4">
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Search leads..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Select value={filterStatus} onValueChange={(value) => handleFilterChange('status', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Statuses</SelectItem>
+                  {statuses.map(status => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterAssignedTo} onValueChange={(value) => handleFilterChange('assignedTo', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by Assignee" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Assignees</SelectItem>
+                  {assignedUsers.map(user => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Lead Pipeline Component */}
+          {/* <LeadPipeline 
+            leads={filteredLeads}
+            onEdit={handleEditLead}
+            onDelete={handleDeleteLead}
+            onConvert={handleConvertLead}
+            onStatusChange={async (leadId, newStatus) => {
+              try {
+                await leadService.updateLead(leadId, { status: newStatus });
+                toast({
+                  title: 'Success',
+                  description: 'Lead status updated successfully.'
+                });
+                loadData();
+              } catch (error) {
+                console.error('Error updating lead status:', error);
+                toast({
+                  title: 'Error',
+                  description: 'Failed to update lead status. Please try again.',
+                  variant: 'destructive'
+                });
+              }
+            }}
+          /> */}
+          <Card className="min-h-[300px] flex items-center justify-center">
+            <CardContent className="text-center text-muted-foreground">
+              <LayoutGrid className="mx-auto h-12 w-12 mb-4" />
+              <p>Lead Pipeline visualization coming soon!</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="list" className="space-y-4">
+          {/* Search and Filters (repeated for list view for now, can be refactored) */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Search leads..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Select value={filterStatus} onValueChange={(value) => handleFilterChange('status', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Statuses</SelectItem>
+                  {statuses.map(status => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterAssignedTo} onValueChange={(value) => handleFilterChange('assignedTo', value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by Assignee" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Assignees</SelectItem>
+                  {assignedUsers.map(user => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Leads List Component */}
+          {/* <LeadsList 
+            leads={filteredLeads}
+            onEdit={handleEditLead}
+            onDelete={handleDeleteLead}
+            onConvert={handleConvertLead}
+          /> */}
+          <Card className="min-h-[300px] flex items-center justify-center">
+            <CardContent className="text-center text-muted-foreground">
+              <List className="mx-auto h-12 w-12 mb-4" />
+              <p>Leads List view coming soon!</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Lead Form Modal */}
+      {/* {showLeadForm && (
+        <LeadForm
+          lead={editingLead}
+          onSubmit={handleLeadFormSubmit}
+          onCancel={() => {
+            setShowLeadForm(false);
+            setEditingLead(null);
+          }}
+        />
+      )} */}
+    </div>
+  );
 };
 
 export default LeadsPage;
+
 

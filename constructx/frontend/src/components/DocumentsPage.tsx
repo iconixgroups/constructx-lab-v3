@@ -1,268 +1,406 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { LayoutGrid, List, Upload, FolderPlus, Search, Filter } from "lucide-react";
-import FolderTree from "./FolderTree";
-import DocumentsList from "./DocumentsList";
-import DocumentsGrid from "./DocumentsGrid";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
-import DocumentUploadForm from "./DocumentUploadForm";
-import FolderForm from "./FolderForm"; // Assuming a FolderForm component exists
+import React, { useState, useEffect } from 'react';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import {
+  Plus,
+  Search,
+  Filter,
+  Download,
+  LayoutGrid,
+  List,
+  Loader2,
+  Folder,
+  FileText,
+  CheckCircle,
+  Clock,
+} from 'lucide-react';
+import { useToast } from './ui/use-toast';
+import documentService from '../services/documentService';
 
-// Mock API (replace with actual API calls)
-const mockApi = {
-    getFolders: async (projectId) => {
-        console.log("Fetching folders for project:", projectId);
-        await new Promise(resolve => setTimeout(resolve, 300));
-        // Mock folder structure
-        return [
-            { id: "folder1", projectId: projectId, parentFolderId: null, name: "Project Plans", createdAt: "2024-01-10T10:00:00Z" },
-            { id: "folder2", projectId: projectId, parentFolderId: null, name: "Contracts", createdAt: "2024-01-11T11:00:00Z" },
-            { id: "folder3", projectId: projectId, parentFolderId: "folder1", name: "Architectural", createdAt: "2024-01-12T12:00:00Z" },
-            { id: "folder4", projectId: projectId, parentFolderId: "folder1", name: "Structural", createdAt: "2024-01-13T13:00:00Z" },
-            { id: "folder5", projectId: projectId, parentFolderId: null, name: "Permits", createdAt: "2024-01-14T14:00:00Z" },
-            { id: "folder6", projectId: projectId, parentFolderId: "folder2", name: "Client Agreement", createdAt: "2024-01-15T15:00:00Z" },
-        ];
-    },
-    getDocuments: async (projectId, folderId = null, filters = {}) => {
-        console.log("Fetching documents for project:", projectId, "folder:", folderId, "filters:", filters);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        // Mock documents
-        let docs = [
-            { id: "doc1", projectId: projectId, folderId: "folder3", name: "Floor_Plan_Level1.pdf", fileSize: 1500000, fileType: "application/pdf", status: "Approved", category: "Drawing", tags: ["level1", "architectural"], createdBy: "user1", createdAt: "2024-01-20T09:00:00Z", updatedAt: "2024-01-22T14:00:00Z", isLatestVersion: true },
-            { id: "doc2", projectId: projectId, folderId: "folder4", name: "Beam_Calculations.xlsx", fileSize: 85000, fileType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "Under Review", category: "Calculation", tags: ["structural", "steel"], createdBy: "user2", createdAt: "2024-01-21T10:30:00Z", updatedAt: "2024-01-21T10:30:00Z", isLatestVersion: true },
-            { id: "doc3", projectId: projectId, folderId: "folder6", name: "Main_Contract_Signed.pdf", fileSize: 3200000, fileType: "application/pdf", status: "Approved", category: "Contract", tags: ["legal", "signed"], createdBy: "user3", createdAt: "2024-01-18T16:00:00Z", updatedAt: "2024-01-18T16:00:00Z", isLatestVersion: true },
-            { id: "doc4", projectId: projectId, folderId: "folder5", name: "Building_Permit_App.pdf", fileSize: 500000, fileType: "application/pdf", status: "Draft", category: "Permit", tags: ["application"], createdBy: "user1", createdAt: "2024-01-25T11:00:00Z", updatedAt: "2024-01-25T11:00:00Z", isLatestVersion: true },
-            { id: "doc5", projectId: projectId, folderId: null, name: "Project_Kickoff_Slides.pptx", fileSize: 5500000, fileType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", status: "Approved", category: "Presentation", tags: ["kickoff"], createdBy: "user2", createdAt: "2024-01-05T15:00:00Z", updatedAt: "2024-01-05T15:00:00Z", isLatestVersion: true }, // Root level doc
-        ];
-        // Apply folder filter
-        if (folderId) {
-            docs = docs.filter(doc => doc.folderId === folderId);
-        } else {
-            // If no folder selected, show root documents (folderId is null)
-            docs = docs.filter(doc => !doc.folderId);
-        }
-        // Apply other filters (search, category, status, etc.) - simplified
-        if (filters.search) {
-            docs = docs.filter(doc => doc.name.toLowerCase().includes(filters.search.toLowerCase()));
-        }
-        if (filters.category) {
-            docs = docs.filter(doc => doc.category === filters.category);
-        }
-        // Add more filters as needed
-        return docs;
-    },
-    getDocumentCategories: async () => ["Drawing", "Specification", "Contract", "Permit", "Report", "Calculation", "Presentation", "Other"],
-    getDocumentStatuses: async () => ["Draft", "Under Review", "Approved", "Rejected", "Archived"],
-};
+// import FolderTree from './FolderTree';
+// import DocumentsList from './DocumentsList';
+// import DocumentsGrid from './DocumentsGrid';
+// import DocumentUploadForm from './DocumentUploadForm';
 
-const DocumentsPage = ({ projectId }) => {
-    const [folders, setFolders] = useState([]);
-    const [documents, setDocuments] = useState([]);
-    const [selectedFolderId, setSelectedFolderId] = useState(null); // null for root
-    const [viewMode, setViewMode] = useState("list"); // "list" or "grid"
-    const [isLoadingFolders, setIsLoadingFolders] = useState(true);
-    const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
-    const [error, setError] = useState(null);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [filters, setFilters] = useState({ category: "", status: "" });
-    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-    const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
-    const [categories, setCategories] = useState([]);
-    const [statuses, setStatuses] = useState([]);
+interface DocumentsPageProps {
+  projectId?: string; // Optional - if provided, shows documents for specific project
+}
 
-    const fetchFolders = useCallback(async () => {
-        setIsLoadingFolders(true);
-        try {
-            const data = await mockApi.getFolders(projectId);
-            setFolders(data);
-        } catch (err) {
-            console.error("Error fetching folders:", err);
-            setError("Failed to load folders.");
-        } finally {
-            setIsLoadingFolders(false);
-        }
-    }, [projectId]);
+const DocumentsPage: React.FC<DocumentsPageProps> = ({ projectId }) => {
+  const { toast } = useToast();
+  const [activeView, setActiveView] = useState('list');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [folders, setFolders] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [statuses, setStatuses] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState({
+    totalDocuments: 0,
+    totalFolders: 0,
+    approvedDocuments: 0,
+    pendingApprovals: 0,
+  });
 
-    const fetchDocuments = useCallback(async () => {
-        setIsLoadingDocuments(true);
-        try {
-            const currentFilters = { ...filters, search: searchTerm };
-            const data = await mockApi.getDocuments(projectId, selectedFolderId, currentFilters);
-            setDocuments(data);
-        } catch (err) {
-            console.error("Error fetching documents:", err);
-            setError("Failed to load documents.");
-        } finally {
-            setIsLoadingDocuments(false);
-        }
-    }, [projectId, selectedFolderId, searchTerm, filters]);
+  useEffect(() => {
+    loadData();
+  }, [projectId]);
 
-    const fetchFilterOptions = useCallback(async () => {
-        try {
-            const [fetchedCategories, fetchedStatuses] = await Promise.all([
-                mockApi.getDocumentCategories(),
-                mockApi.getDocumentStatuses(),
-            ]);
-            setCategories(fetchedCategories);
-            setStatuses(fetchedStatuses);
-        } catch (err) {
-            console.error("Error fetching filter options:", err);
-        }
-    }, []);
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [documentsResponse, foldersResponse, categoriesResponse, statusesResponse] = await Promise.all([
+        documentService.getDocuments(projectId || ''),
+        documentService.getFolders(projectId || ''),
+        documentService.getDocumentCategories(),
+        documentService.getDocumentStatuses(),
+      ]);
 
-    useEffect(() => {
-        fetchFolders();
-        fetchFilterOptions();
-    }, [fetchFolders, fetchFilterOptions]);
+      setDocuments(documentsResponse);
+      setFolders(foldersResponse);
+      setCategories(categoriesResponse.map((c: string) => ({ value: c, label: c })));
+      setStatuses(statusesResponse.map((s: string) => ({ value: s, label: s })));
 
-    useEffect(() => {
-        fetchDocuments();
-    }, [fetchDocuments]); // Refetch documents when folder or filters change
+      // Calculate metrics (mock for now, ideally from API)
+      const approved = documentsResponse.filter((doc: any) => doc.status === 'Approved').length;
+      const pending = documentsResponse.filter((doc: any) => doc.status === 'Under Review').length;
 
-    const handleSelectFolder = (folderId) => {
-        setSelectedFolderId(folderId);
-    };
+      setMetrics({
+        totalDocuments: documentsResponse.length,
+        totalFolders: foldersResponse.length,
+        approvedDocuments: approved,
+        pendingApprovals: pending,
+      });
 
-    const handleFilterChange = (filterName, value) => {
-        setFilters(prev => ({ ...prev, [filterName]: value }));
-    };
+    } catch (error) {
+      console.error('Error loading document data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load document data. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const handleSearchChange = (event) => {
-        setSearchTerm(event.target.value);
-    };
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+  };
 
-    const handleSearchSubmit = (event) => {
-        event.preventDefault();
-        fetchDocuments(); // Trigger refetch on explicit search submit (or could do on change)
-    };
+  const handleFilterChange = (filterName: string, value: string) => {
+    switch (filterName) {
+      case 'category':
+        setFilterCategory(value);
+        break;
+      case 'status':
+        setFilterStatus(value);
+        break;
+    }
+  };
 
-    const handleUploadSuccess = () => {
-        setIsUploadModalOpen(false);
-        fetchDocuments(); // Refresh documents list
-    };
+  const handleUploadDocument = () => {
+    setShowUploadForm(true);
+  };
 
-    const handleCreateFolderSuccess = () => {
-        setIsCreateFolderModalOpen(false);
-        fetchFolders(); // Refresh folder tree
-    };
+  const handleCreateFolder = async () => {
+    // Placeholder for creating new folder logic
+    toast({
+      title: 'Info',
+      description: 'Create new folder functionality coming soon!',
+    });
+  };
 
+  const handleDocumentUploadSubmit = async (documentData: any) => {
+    setIsLoading(true);
+    try {
+      await documentService.uploadDocument(projectId || '', documentData);
+      toast({
+        title: 'Success',
+        description: 'Document uploaded successfully.',
+      });
+      setShowUploadForm(false);
+      loadData();
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to upload document. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    setIsLoading(true);
+    try {
+      await documentService.deleteDocument(documentId);
+      toast({
+        title: 'Success',
+        description: 'Document deleted successfully.',
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete document. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredDocuments = documents.filter((doc) => {
+    const matchesSearch =
+      !searchTerm ||
+      doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      doc.description.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesCategory = !filterCategory || doc.category === filterCategory;
+    const matchesStatus = !filterStatus || doc.status === filterStatus;
+
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
+
+  if (isLoading && documents.length === 0) {
     return (
-        <div className="flex h-[calc(100vh-var(--header-height))]"> {/* Adjust height based on layout */} 
-            {/* Folder Tree Sidebar */}
-            <aside className="w-64 border-r p-4 overflow-y-auto flex-shrink-0">
-                <h2 className="text-lg font-semibold mb-4">Folders</h2>
-                {isLoadingFolders ? (
-                    <div>Loading folders...</div>
-                ) : error && !folders.length ? (
-                    <div className="text-red-500">Error loading folders.</div>
-                ) : (
-                    <FolderTree 
-                        folders={folders} 
-                        selectedFolderId={selectedFolderId} 
-                        onSelectFolder={handleSelectFolder} 
-                        onFolderCreated={fetchFolders} // Callback to refresh tree
-                        onFolderDeleted={fetchFolders}
-                        onFolderRenamed={fetchFolders}
-                    />
-                )}
-            </aside>
-
-            {/* Main Content Area */}
-            <main className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden">
-                {/* Header and Controls */}
-                <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-                    <h1 className="text-2xl font-bold">Documents</h1>
-                    <div className="flex gap-2 flex-wrap justify-end">
-                        {/* Search */}
-                        <form onSubmit={handleSearchSubmit} className="flex gap-1">
-                            <Input 
-                                type="search" 
-                                placeholder="Search documents..." 
-                                value={searchTerm}
-                                onChange={handleSearchChange}
-                                className="h-9 w-40 md:w-56"
-                            />
-                            <Button type="submit" variant="ghost" size="icon" className="h-9 w-9">
-                                <Search className="h-4 w-4" />
-                            </Button>
-                        </form>
-                        {/* Filters (Example: Category) */}
-                        <Select value={filters.category} onValueChange={(value) => handleFilterChange("category", value)}>
-                            <SelectTrigger className="h-9 w-36 text-xs">
-                                <Filter className="h-3 w-3 mr-1"/>
-                                <SelectValue placeholder="Category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="">All Categories</SelectItem>
-                                {categories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                         {/* Add more filters (Status, Tags, etc.) */}
-                        {/* View Mode Toggle */}
-                        <div className="flex items-center border rounded-md h-9">
-                            <Button variant={viewMode === "list" ? "secondary" : "ghost"} size="icon" onClick={() => setViewMode("list")} className="h-full w-9 rounded-r-none border-r">
-                                <List className="h-4 w-4" />
-                            </Button>
-                            <Button variant={viewMode === "grid" ? "secondary" : "ghost"} size="icon" onClick={() => setViewMode("grid")} className="h-full w-9 rounded-l-none">
-                                <LayoutGrid className="h-4 w-4" />
-                            </Button>
-                        </div>
-                        {/* Action Buttons */}
-                        <Dialog open={isCreateFolderModalOpen} onOpenChange={setIsCreateFolderModalOpen}>
-                            <DialogTrigger asChild>
-                                <Button variant="outline" size="sm" className="h-9">
-                                    <FolderPlus className="mr-2 h-4 w-4" /> Create Folder
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader><DialogTitle>Create New Folder</DialogTitle></DialogHeader>
-                                <FolderForm 
-                                    projectId={projectId} 
-                                    parentFolderId={selectedFolderId} 
-                                    onSuccess={handleCreateFolderSuccess} 
-                                    onCancel={() => setIsCreateFolderModalOpen(false)} 
-                                />
-                            </DialogContent>
-                        </Dialog>
-                        <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
-                            <DialogTrigger asChild>
-                                <Button size="sm" className="h-9">
-                                    <Upload className="mr-2 h-4 w-4" /> Upload Document
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-[600px]">
-                                <DialogHeader><DialogTitle>Upload New Document</DialogTitle></DialogHeader>
-                                <DocumentUploadForm 
-                                    projectId={projectId} 
-                                    targetFolderId={selectedFolderId} 
-                                    onSuccess={handleUploadSuccess} 
-                                    onCancel={() => setIsUploadModalOpen(false)} 
-                                />
-                            </DialogContent>
-                        </Dialog>
-                    </div>
-                </div>
-
-                {/* Document List/Grid */}
-                <div className="flex-1 overflow-y-auto">
-                    {isLoadingDocuments ? (
-                        <div className="text-center p-8">Loading documents...</div>
-                    ) : error && !documents.length ? (
-                        <div className="text-center p-8 text-red-500">Error loading documents.</div>
-                    ) : !documents.length ? (
-                        <div className="text-center p-8 text-muted-foreground">No documents found in this folder or matching filters.</div>
-                    ) : viewMode === "list" ? (
-                        <DocumentsList documents={documents} />
-                    ) : (
-                        <DocumentsGrid documents={documents} />
-                    )}
-                </div>
-            </main>
-        </div>
+      <div className="flex justify-center items-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
     );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Documents Management</h1>
+          <p className="text-muted-foreground">
+            {projectId ? `Manage documents for project ${projectId}` : 'Centralized document repository'}
+          </p>
+        </div>
+        <div className="flex space-x-2">
+          <Button variant="outline" onClick={() => {}}>
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+          <Button onClick={handleCreateFolder}>
+            <Folder className="h-4 w-4 mr-2" />
+            Create Folder
+          </Button>
+          <Button onClick={handleUploadDocument}>
+            <Plus className="h-4 w-4 mr-2" />
+            Upload Document
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Documents</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.totalDocuments}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Folders</CardTitle>
+            <Folder className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.totalFolders}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Approved Documents</CardTitle>
+            <CheckCircle className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.approvedDocuments}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
+            <Clock className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{metrics.pendingApprovals}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Folder Tree */}
+        {/* <div className="lg:w-1/4">
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle>Folders</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FolderTree folders={folders} onSelectFolder={(folderId) => console.log(folderId)} />
+            </CardContent>
+          </Card>
+        </div> */}
+        <div className="lg:w-full">
+          <Tabs value={activeView} onValueChange={setActiveView}>
+            <TabsList>
+              <TabsTrigger value="list">List View</TabsTrigger>
+              <TabsTrigger value="grid">Grid View</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="list" className="space-y-4">
+              {/* Search and Filters */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                    <Input
+                      placeholder="Search documents..."
+                      value={searchTerm}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Select value={filterCategory} onValueChange={(value) => handleFilterChange('category', value)}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Filter by Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Categories</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.value} value={category.value}>
+                          {category.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterStatus} onValueChange={(value) => handleFilterChange('status', value)}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Filter by Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Statuses</SelectItem>
+                      {statuses.map((status) => (
+                        <SelectItem key={status.value} value={status.value}>
+                          {status.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Documents List Component */}
+              {/* <DocumentsList
+                documents={filteredDocuments}
+                onEdit={(doc) => console.log('Edit', doc.id)}
+                onDelete={handleDeleteDocument}
+                onDownload={(doc) => console.log('Download', doc.id)}
+                onPreview={(doc) => console.log('Preview', doc.id)}
+              /> */}
+              <Card className="min-h-[300px] flex items-center justify-center">
+                <CardContent className="text-center text-muted-foreground">
+                  <List className="mx-auto h-12 w-12 mb-4" />
+                  <p>Documents List view coming soon!</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="grid" className="space-y-4">
+              {/* Search and Filters (repeated for grid view for now, can be refactored) */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                    <Input
+                      placeholder="Search documents..."
+                      value={searchTerm}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Select value={filterCategory} onValueChange={(value) => handleFilterChange('category', value)}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Filter by Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Categories</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.value} value={category.value}>
+                          {category.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterStatus} onValueChange={(value) => handleFilterChange('status', value)}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Filter by Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Statuses</SelectItem>
+                      {statuses.map((status) => (
+                        <SelectItem key={status.value} value={status.value}>
+                          {status.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Documents Grid Component */}
+              {/* <DocumentsGrid
+                documents={filteredDocuments}
+                onEdit={(doc) => console.log('Edit', doc.id)}
+                onDelete={handleDeleteDocument}
+                onDownload={(doc) => console.log('Download', doc.id)}
+                onPreview={(doc) => console.log('Preview', doc.id)}
+              /> */}
+              <Card className="min-h-[300px] flex items-center justify-center">
+                <CardContent className="text-center text-muted-foreground">
+                  <LayoutGrid className="mx-auto h-12 w-12 mb-4" />
+                  <p>Documents Grid view coming soon!</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+
+      {/* Document Upload Form Modal */}
+      {/* {showUploadForm && (
+        <DocumentUploadForm
+          projectId={projectId}
+          onUpload={handleDocumentUploadSubmit}
+          onCancel={() => setShowUploadForm(false)}
+        />
+      )} */}
+    </div>
+  );
 };
 
 export default DocumentsPage;
+
 

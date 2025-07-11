@@ -1,0 +1,56 @@
+0 verbose cli /home/ubuntu/.nvm/versions/node/v22.13.0/bin/node /home/ubuntu/.nvm/versions/node/v22.13.0/bin/npm
+1 info using npm@10.9.2
+2 info using node@v22.13.0
+3 silly config load:file:/home/ubuntu/.nvm/versions/node/v22.13.0/lib/node_modules/npm/npmrc
+4 silly config load:file:/home/ubuntu/.cache/typescript/5.8/.npmrc
+5 silly config load:file:/home/ubuntu/.npmrc
+6 silly config load:file:/home/ubuntu/.nvm/versions/node/v22.13.0/etc/npmrc
+7 verbose title npm install @types/nodemailer@ts5.8
+8 verbose argv "install" "--ignore-scripts" "@types/nodemailer@ts5.8" "--save-dev" "--user-agent" "typesInstaller/5.8.3"
+9 verbose logfile logs-max:10 dir:/home/ubuntu/.npm/_logs/2025-07-11T07_21_53_919Z-
+10 verbose logfile /home/ubuntu/.npm/_logs/2025-07-11T07_21_53_919Z-debug-0.log
+11 silly logfile start cleaning logs, removing 1 files
+12 silly logfile done cleaning log files
+13 silly packumentCache heap:2117074944 maxSize:529268736 maxEntrySize:264634368
+14 silly packumentCache corgi:https://registry.npmjs.org/@types%2fnodemailer cache-miss
+15 http fetch GET 200 https://registry.npmjs.org/@types%2fnodemailer 143ms (cache miss)
+16 silly packumentCache corgi:https://registry.npmjs.org/@types%2fnodemailer set size:undefined disposed:false
+17 silly idealTree buildDeps
+18 silly fetch manifest @types/nodemailer@6.4.17
+19 silly packumentCache full:https://registry.npmjs.org/@types%2fnodemailer cache-miss
+20 http fetch GET 200 https://registry.npmjs.org/@types%2fnodemailer 47ms (cache miss)
+21 silly packumentCache full:https://registry.npmjs.org/@types%2fnodemailer set size:undefined disposed:false
+22 silly placeDep ROOT @types/nodemailer@6.4.17 OK for:  want: 6.4.17
+23 silly reify moves {}
+24 silly audit bulk request {
+24 silly audit   '@types/jsonwebtoken': [ '9.0.10' ],
+24 silly audit   '@types/ms': [ '2.1.0' ],
+24 silly audit   '@types/node': [ '24.0.10' ],
+24 silly audit   '@types/pg': [ '8.15.4' ],
+24 silly audit   '@types/pg-pool': [ '2.0.6' ],
+24 silly audit   '@types/react': [ '19.1.8' ],
+24 silly audit   csstype: [ '3.1.3' ],
+24 silly audit   'pg-int8': [ '1.0.1' ],
+24 silly audit   'pg-protocol': [ '1.10.3' ],
+24 silly audit   'pg-types': [ '2.2.0' ],
+24 silly audit   'postgres-array': [ '2.0.0' ],
+24 silly audit   'postgres-bytea': [ '1.0.0' ],
+24 silly audit   'postgres-date': [ '1.0.7' ],
+24 silly audit   'postgres-interval': [ '1.2.0' ],
+24 silly audit   'types-registry': [ '0.1.728' ],
+24 silly audit   'undici-types': [ '7.8.0' ],
+24 silly audit   xtend: [ '4.0.2' ],
+24 silly audit   '@types/nodemailer': [ '6.4.17' ]
+24 silly audit }
+25 http cache @types/nodemailer@https://registry.npmjs.org/@types/nodemailer/-/nodemailer-6.4.17.tgz 0ms (cache hit)
+26 silly tarball no local data for @types/nodemailer@https://registry.npmjs.org/@types/nodemailer/-/nodemailer-6.4.17.tgz. Extracting by manifest.
+27 http fetch GET 200 https://registry.npmjs.org/@types/nodemailer/-/nodemailer-6.4.17.tgz 101ms (cache miss)
+28 http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 126ms
+29 silly audit report {}
+30 silly ADD node_modules/@types/nodemailer
+31 verbose cwd /home/ubuntu/.cache/typescript/5.8
+32 verbose os Linux 6.1.102
+33 verbose node v22.13.0
+34 verbose npm  v10.9.2
+35 verbose exit 0
+36 info ok
