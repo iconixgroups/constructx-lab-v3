@@ -1,0 +1,25 @@
+0 verbose cli /home/ubuntu/.nvm/versions/node/v22.13.0/bin/node /home/ubuntu/.nvm/versions/node/v22.13.0/bin/npm
+1 info using npm@10.9.2
+2 info using node@v22.13.0
+3 silly config load:file:/home/ubuntu/.nvm/versions/node/v22.13.0/lib/node_modules/npm/npmrc
+4 silly config load:file:/home/ubuntu/constructx/backend/.npmrc
+5 silly config load:file:/home/ubuntu/.npmrc
+6 silly config load:file:/home/ubuntu/.nvm/versions/node/v22.13.0/etc/npmrc
+7 verbose title npm start
+8 verbose argv "start"
+9 verbose logfile logs-max:10 dir:/home/ubuntu/.npm/_logs/2025-07-11T06_45_52_833Z-
+10 verbose logfile /home/ubuntu/.npm/_logs/2025-07-11T06_45_52_833Z-debug-0.log
+11 silly logfile start cleaning logs, removing 1 files
+12 silly logfile done cleaning log files
+13 http fetch GET 200 https://registry.npmjs.org/npm 163ms
+14 verbose cwd /home/ubuntu/constructx/backend
+15 verbose os Linux 6.1.102
+16 verbose node v22.13.0
+17 verbose npm  v10.9.2
+18 notice
+18 notice New [31mmajor[39m version of npm available! [31m10.9.2[39m -> [34m11.4.2[39m
+18 notice Changelog: [34mhttps://github.com/npm/cli/releases/tag/v11.4.2[39m
+18 notice To update run: [4mnpm install -g npm@11.4.2[24m
+18 notice  { force: true, [Symbol(proc-log.meta)]: true }
+19 verbose exit 1
+20 verbose code 1

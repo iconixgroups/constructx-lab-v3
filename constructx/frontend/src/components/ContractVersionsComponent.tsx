@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useToast } from "./ui/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
+import { contractService } from "../services/contractService";
 
 interface ContractVersionsComponentProps {
   contractId: string;
@@ -161,24 +162,23 @@ const ContractVersionsComponent: React.FC<ContractVersionsComponentProps> = ({ c
       setError(null);
       
       try {
-        // This will be replaced with actual API call
-        // const response = await contractService.getContractVersions(contractId);
-        // setVersions(response.data);
-        
-        // Mock data for development
-        setTimeout(() => {
-          setVersions(mockVersions);
-          setIsLoading(false);
-        }, 1000);
+        const response = await contractService.getContractVersions(contractId);
+        setVersions(response.data || response);
+        setIsLoading(false);
       } catch (err) {
         console.error("Error fetching contract versions:", err);
         setError("Failed to load contract versions. Please try again.");
         setIsLoading(false);
+        toast({
+          title: "Error",
+          description: "Failed to load contract versions. Please try again.",
+          variant: "destructive"
+        });
       }
     };
     
     fetchVersions();
-  }, [contractId]);
+  }, [contractId, toast]);
   
   // Handle form input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -248,24 +248,15 @@ const ContractVersionsComponent: React.FC<ContractVersionsComponentProps> = ({ c
     setIsSubmitting(true);
     
     try {
-      // This will be replaced with actual API call
-      // const response = await contractService.createContractVersion(contractId, formData);
-      // setVersions(prev => [...prev, response.data]);
-      
-      // Mock create for development
-      const newVersion = {
-        id: `version-${Date.now()}`,
-        contractId,
-        name: formData.name,
-        description: formData.description,
-        createdBy: "Current User", // This would be the actual logged-in user
-        createdAt: new Date().toISOString(),
-        isBaseline: formData.isBaseline,
-        changes: []
-      };
-      
+      const response = await contractService.createContractVersion(contractId, formData);
+      const newVersion = response.data || response;
       setVersions(prev => [...prev, newVersion]);
       setShowCreateDialog(false);
+      setFormData({
+        name: "",
+        description: "",
+        isBaseline: false
+      });
       toast({
         title: "Success",
         description: "Contract version created successfully."
@@ -289,10 +280,7 @@ const ContractVersionsComponent: React.FC<ContractVersionsComponentProps> = ({ c
     }
     
     try {
-      // This will be replaced with actual API call
-      // await contractService.deleteContractVersion(versionId);
-      
-      // Mock delete for development
+      await contractService.deleteContractVersion(contractId, versionId);
       setVersions(prev => prev.filter(v => v.id !== versionId));
       setSelectedVersions(prev => prev.filter(id => id !== versionId));
       toast({
@@ -316,10 +304,7 @@ const ContractVersionsComponent: React.FC<ContractVersionsComponentProps> = ({ c
     }
     
     try {
-      // This will be replaced with actual API call
-      // await contractService.restoreContractVersion(contractId, versionId);
-      
-      // Mock restore for development
+      await contractService.restoreContractVersion(contractId, versionId);
       toast({
         title: "Success",
         description: "Contract restored to selected version successfully."

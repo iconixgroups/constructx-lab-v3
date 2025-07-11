@@ -38,7 +38,7 @@ function App() {
                 <a href="#about" className="text-sm font-medium hover:text-primary">About</a>
               </nav>
               <div className="flex items-center gap-4">
-                <Button variant="ghost" size="sm">Log In</Button>
+                <Button variant="ghost" size="sm" asChild><a href="/login">Log In</a></Button>
                 <Button size="sm">Start Free Trial</Button>
               </div>
             </div>
